@@ -152,15 +152,42 @@ def build_setups_from_live(rows):
         pool.sort(key=lambda r: (abs(abs(float(r["delta"])) - 0.125), abs((short_p["strike"] - r["strike"]) - 10)))
         long_p = pool[0] if pool else None
 
-    short_c_ic = choose_leg(liquid, "C", 7, 21, 0.15, 0.20) or choose_leg(liquid, "C", 7, 21, 0.12, 0.25)
-    short_p_ic = choose_leg(liquid, "P", 7, 21, 0.15, 0.20) or choose_leg(liquid, "P", 7, 21, 0.12, 0.25)
+    short_c_ic = choose_leg(liquid, "C", 5, 30, 0.15, 0.20) or choose_leg(liquid, "C", 5, 30, 0.10, 0.30)
+    short_p_ic = choose_leg(liquid, "P", 5, 30, 0.15, 0.20) or choose_leg(liquid, "P", 5, 30, 0.10, 0.30)
     long_c_ic = long_p_ic = None
+
+    # Condor fallback: force same-expiry pair if the independent pickers disagree.
+    if not (short_c_ic and short_p_ic and short_c_ic["expiry"] == short_p_ic["expiry"]):
+        expiries = sorted({r["expiry"] for r in liquid if 7 <= (r.get("dte") or 999) <= 30})
+        best = None
+        for exp in expiries:
+            calls = [r for r in liquid if r["expiry"] == exp and r["side"] == "C" and 0.12 <= abs(float(r.get("delta") or 99)) <= 0.30]
+            puts = [r for r in liquid if r["expiry"] == exp and r["side"] == "P" and 0.12 <= abs(float(r.get("delta") or 99)) <= 0.30]
+            if not calls or not puts:
+                continue
+            for c in sorted(calls, key=lambda r: abs(abs(float(r["delta"])) - 0.18)):
+                for p in sorted(puts, key=lambda r: abs(abs(float(r["delta"])) - 0.18)):
+                    has_call_wing = any(x for x in rows if x["expiry"] == exp and x["side"] == "C" and x["strike"] > c["strike"] and x.get("mark") not in (None,0))
+                    has_put_wing = any(x for x in rows if x["expiry"] == exp and x["side"] == "P" and x["strike"] < p["strike"] and x.get("mark") not in (None,0))
+                    if not (has_call_wing and has_put_wing):
+                        continue
+                    score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18)
+                    if best is None or score < best[0]:
+                        best = (score, c, p)
+                    break
+                if best is not None:
+                    break
+        if best:
+            short_c_ic, short_p_ic = best[1], best[2]
+
     if short_c_ic and short_p_ic and short_c_ic["expiry"] == short_p_ic["expiry"]:
         exp = short_c_ic["expiry"]
-        cands_c = [r for r in liquid if r["expiry"] == exp and r["side"] == "C" and r["strike"] > short_c_ic["strike"]]
-        cands_p = [r for r in liquid if r["expiry"] == exp and r["side"] == "P" and r["strike"] < short_p_ic["strike"]]
-        if cands_c: long_c_ic = sorted(cands_c, key=lambda r: abs((r["strike"] - short_c_ic["strike"]) - 5))[0]
-        if cands_p: long_p_ic = sorted(cands_p, key=lambda r: abs((short_p_ic["strike"] - r["strike"]) - 5))[0]
+        cands_c = [r for r in rows if r["expiry"] == exp and r["side"] == "C" and r["strike"] > short_c_ic["strike"] and r.get("mark") not in (None,0)]
+        cands_p = [r for r in rows if r["expiry"] == exp and r["side"] == "P" and r["strike"] < short_p_ic["strike"] and r.get("mark") not in (None,0)]
+        if cands_c:
+            long_c_ic = sorted(cands_c, key=lambda r: abs((r["strike"] - short_c_ic["strike"]) - 5))[0]
+        if cands_p:
+            long_p_ic = sorted(cands_p, key=lambda r: abs((short_p_ic["strike"] - r["strike"]) - 5))[0]
 
     def fmt(r): return f"{r['expiry']} {int(r['strike'])}{r['side']}" if r else "N/A"
 
