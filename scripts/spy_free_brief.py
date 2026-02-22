@@ -8,6 +8,10 @@ CHAIN_PATH = os.environ.get("SPY_CHAIN_PATH", os.path.expanduser("~/lab/data/tas
 DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", os.path.expanduser("~/lab/data/tastytrade/dxlink_snapshot.json"))
 LIVE_PATH = os.environ.get("SPY_LIVE_PATH", os.path.expanduser("~/lab/data/tastytrade/spy_live_snapshot.json"))
 
+MIN_OI = int(os.environ.get("SPY_MIN_OI", "1000"))
+MIN_VOL = int(os.environ.get("SPY_MIN_VOL", "100"))
+MAX_SPREAD_PCT = float(os.environ.get("SPY_MAX_SPREAD_PCT", "0.10"))
+
 
 def http_json(url: str, timeout: int = 8):
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -84,12 +88,32 @@ def load_live(path):
         return None
 
 
+def spread_pct(row):
+    b, a, m = row.get("bid"), row.get("ask"), row.get("mark")
+    if b is None or a is None or m in (None, 0):
+        return None
+    return max(0.0, (a - b) / m)
+
+
+def is_liquid(row):
+    sp = spread_pct(row)
+    return (
+        row.get("mark") not in (None, 0)
+        and row.get("openInterest") is not None
+        and row.get("dayVolume") is not None
+        and row.get("openInterest") >= MIN_OI
+        and row.get("dayVolume") >= MIN_VOL
+        and sp is not None
+        and sp <= MAX_SPREAD_PCT
+    )
+
+
 def watchlist_from_live(live):
     rows = []
     data = live.get("data", {})
     for c in live.get("contracts", []):
         d = data.get(c["symbol"], {})
-        rows.append({
+        row = {
             "expiry": c["expiry"],
             "dte": c["dte"],
             "strike": c["strike"],
@@ -104,7 +128,12 @@ def watchlist_from_live(live):
             "openInterest": d.get("openInterest"),
             "dayVolume": d.get("dayVolume"),
             "confidence": "delayed-live",
-        })
+        }
+        sp = spread_pct(row)
+        row["spreadPct"] = round(sp, 4) if sp is not None else None
+        row["liquid"] = is_liquid(row)
+        rows.append(row)
+    rows.sort(key=lambda r: (r["dte"], -(r.get("dayVolume") or 0), -(r.get("openInterest") or 0)))
     return rows
 
 
@@ -124,39 +153,77 @@ def build_watchlist_structure(chain, spot):
     return out[:10]
 
 
-def pick_by_delta(rows, side, lo, hi, dte_max=30):
-    cands = [r for r in rows if r.get("side") == side and r.get("delta") is not None and r.get("dte", 999) <= dte_max]
-    cands = [r for r in cands if lo <= abs(float(r["delta"])) <= hi]
+def choose_leg(rows, side, dte_lo, dte_hi, d_lo, d_hi):
+    cands = [
+        r for r in rows
+        if r.get("side") == side
+        and r.get("delta") is not None
+        and dte_lo <= (r.get("dte") or 999) <= dte_hi
+        and d_lo <= abs(float(r["delta"])) <= d_hi
+        and r.get("liquid")
+    ]
     if not cands:
         return None
-    return sorted(cands, key=lambda r: abs(abs(float(r["delta"])) - (lo + hi) / 2))[0]
+    target = (d_lo + d_hi) / 2.0
+    cands.sort(key=lambda r: (r["dte"], abs(abs(float(r["delta"])) - target), -(r.get("dayVolume") or 0)))
+    return cands[0]
 
 
 def build_setups_from_live(rows):
-    long_call = pick_by_delta(rows, "C", 0.35, 0.45)
-    short_call = pick_by_delta(rows, "C", 0.15, 0.25)
-    short_put = pick_by_delta(rows, "P", 0.20, 0.30)
-    long_put = pick_by_delta(rows, "P", 0.10, 0.15)
+    liquid_rows = [r for r in rows if r.get("liquid")]
+
+    # Debit spread: 5-14 DTE, long 0.35-0.45, short 0.15-0.25 same expiry, short strike above long strike.
+    long_call = choose_leg(liquid_rows, "C", 5, 14, 0.35, 0.45)
+    short_call = None
+    if long_call:
+        call_pool = [r for r in liquid_rows if r["side"] == "C" and r["expiry"] == long_call["expiry"] and r["strike"] > long_call["strike"] and 0.15 <= abs(float(r["delta"])) <= 0.25]
+        call_pool.sort(key=lambda r: (abs(abs(float(r["delta"])) - 0.2), abs((r["strike"] - long_call["strike"]) - 10)))
+        short_call = call_pool[0] if call_pool else None
+
+    # Put credit: 7-30 DTE, short 0.20-0.30, long 0.10-0.15 same expiry, long strike lower.
+    short_put = choose_leg(liquid_rows, "P", 7, 30, 0.20, 0.30)
+    long_put = None
+    if short_put:
+        put_pool = [r for r in liquid_rows if r["side"] == "P" and r["expiry"] == short_put["expiry"] and r["strike"] < short_put["strike"] and 0.10 <= abs(float(r["delta"])) <= 0.15]
+        put_pool.sort(key=lambda r: (abs(abs(float(r["delta"])) - 0.125), abs((short_put["strike"] - r["strike"]) - 10)))
+        long_put = put_pool[0] if put_pool else None
+
+    # Iron condor: both shorts 0.15-0.20, wings nearest lower/higher strike same expiry.
+    short_call_ic = choose_leg(liquid_rows, "C", 7, 21, 0.15, 0.20)
+    short_put_ic = choose_leg(liquid_rows, "P", 7, 21, 0.15, 0.20)
+    long_call_ic = long_put_ic = None
+    if short_call_ic and short_put_ic:
+        common_exp = short_call_ic["expiry"] if short_call_ic["expiry"] == short_put_ic["expiry"] else None
+        if common_exp:
+            cands_c = [r for r in liquid_rows if r["expiry"] == common_exp and r["side"] == "C" and r["strike"] > short_call_ic["strike"]]
+            cands_p = [r for r in liquid_rows if r["expiry"] == common_exp and r["side"] == "P" and r["strike"] < short_put_ic["strike"]]
+            if cands_c:
+                long_call_ic = sorted(cands_c, key=lambda r: abs((r["strike"] - short_call_ic["strike"]) - 10))[0]
+            if cands_p:
+                long_put_ic = sorted(cands_p, key=lambda r: abs((short_put_ic["strike"] - r["strike"]) - 10))[0]
 
     def fmt(r):
         if not r:
             return "N/A"
-        return f"{r['expiry']} {int(r['strike'])}{r['side']} ({r.get('symbol')})"
+        return f"{r['expiry']} {int(r['strike'])}{r['side']}"
 
     return [
         {
-            "setup": "Bull call debit spread (defined risk)",
+            "setup": "Bull call debit spread (tight selector)",
             "example": f"Buy {fmt(long_call)} / Sell {fmt(short_call)}",
+            "criteria": "5-14 DTE, long 0.35-0.45 delta, short 0.15-0.25 delta, liquid only",
             "risk": "Max loss = net debit x 100",
         },
         {
-            "setup": "Bull put credit spread (defined risk)",
+            "setup": "Bull put credit spread (tight selector)",
             "example": f"Sell {fmt(short_put)} / Buy {fmt(long_put)}",
+            "criteria": "7-30 DTE, short 0.20-0.30 delta, long 0.10-0.15 delta, liquid only",
             "risk": "Max loss = (width - credit) x 100",
         },
         {
-            "setup": "Iron condor (defined risk)",
-            "example": f"Put side: Sell {fmt(short_put)} / Buy {fmt(long_put)} + Call side: Sell {fmt(short_call)} / Buy {fmt(long_call)}",
+            "setup": "Iron condor (tight selector)",
+            "example": f"Sell {fmt(short_put_ic)} / Buy {fmt(long_put_ic)} + Sell {fmt(short_call_ic)} / Buy {fmt(long_call_ic)}",
+            "criteria": "7-21 DTE, both shorts 0.15-0.20 delta, liquid only",
             "risk": "Max loss per side = (wing - credit) x 100",
         },
     ]
@@ -195,7 +262,6 @@ def main():
 
     regime = get_regime_read()
 
-    required = ["bid", "ask", "mark", "delta", "iv", "openInterest", "dayVolume"]
     trade_ready = False
     watch = []
     setups = []
@@ -203,14 +269,15 @@ def main():
 
     if live:
         watch = watchlist_from_live(live)
-        good = 0
-        for r in watch:
-            if all(r.get(k) is not None for k in required):
-                good += 1
-        trade_ready = good >= 6
+        liquid_count = len([r for r in watch if r.get("liquid")])
+        has_fields = len([r for r in watch if all(r.get(k) is not None for k in ["bid", "ask", "mark", "delta", "iv", "openInterest", "dayVolume"])])
+        trade_ready = liquid_count >= 6 and has_fields >= 10
         setups = build_setups_from_live(watch)
         if not trade_ready:
-            missing = ["some contracts missing bid/ask/mark/delta/iv/openInterest/dayVolume"]
+            missing = [
+                f"need >=6 liquid contracts (now {liquid_count})",
+                f"need >=10 contracts with complete fields (now {has_fields})",
+            ]
     else:
         watch = build_watchlist_structure(chain, spot)
         setups = build_setups_structure(spot)
@@ -221,6 +288,18 @@ def main():
         "generated_at_utc": now,
         "symbol": "SPY",
         "spot": {"value": spot, "source": "live_snapshot" if spot_live else ("dxlink_snapshot" if spot_dx else ("yahoo" if spot_yf else None))},
+        "selector": {
+            "minOI": MIN_OI,
+            "minDayVolume": MIN_VOL,
+            "maxSpreadPct": MAX_SPREAD_PCT,
+            "deltaBands": {
+                "debit_long_call": [0.35, 0.45],
+                "debit_short_call": [0.15, 0.25],
+                "credit_short_put": [0.20, 0.30],
+                "credit_long_put": [0.10, 0.15],
+                "ic_shorts": [0.15, 0.20],
+            },
+        },
         "catalysts": catalysts(),
         "regime": regime,
         "watchlist": watch[:20],
