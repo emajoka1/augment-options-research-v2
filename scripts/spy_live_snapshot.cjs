@@ -15,7 +15,7 @@ function round5(x) { return Math.round(x / 5) * 5; }
 function pickContracts(chain, spotGuess) {
   const exp = [...(chain.expirations || [])].sort((a,b)=> (a['days-to-expiration']??9999) - (b['days-to-expiration']??9999)).slice(0,2);
   const center = round5(spotGuess || 600);
-  const picks = [center - 10, center - 5, center, center + 5, center + 10];
+  const picks = [center - 25, center - 20, center - 15, center - 10, center - 5, center, center + 5, center + 10, center + 15, center + 20, center + 25];
   const out = [];
   for (const e of exp) {
     const byStrike = new Map((e.strikes||[]).map(s => [Number(s['strike-price']), s]));
@@ -26,7 +26,7 @@ function pickContracts(chain, spotGuess) {
       if (row['put-streamer-symbol']) out.push({expiry:e['expiration-date'], dte:e['days-to-expiration'], strike:st, side:'P', symbol:row['put-streamer-symbol']});
     }
   }
-  return out.slice(0, 20);
+  return out.slice(0, 44);
 }
 
 (async () => {
