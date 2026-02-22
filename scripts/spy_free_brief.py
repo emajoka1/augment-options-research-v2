@@ -191,29 +191,119 @@ def build_setups_from_live(rows):
 
     def fmt(r): return f"{r['expiry']} {int(r['strike'])}{r['side']}" if r else "N/A"
 
+    def avg_spread(*legs):
+        vals = [x.get("spreadPct") for x in legs if x and x.get("spreadPct") is not None]
+        return (sum(vals) / len(vals)) if vals else None
+
+    def make_ticket(kind, legs, max_loss):
+        marks = [float(x.get("mark") or 0) for x in legs if x]
+        if not marks:
+            return None
+        if kind == "debit":
+            entry = max(0.01, marks[0] - marks[1])
+            return {
+                "entry": [round(entry * 0.98, 2), round(entry * 1.03, 2)],
+                "takeProfit": round(entry * 1.6, 2),
+                "stopLoss": round(entry * 0.6, 2),
+                "invalidation": "break below opening range low",
+                "maxLoss": round(max_loss, 2),
+                "contracts": contracts_for_risk(max_loss),
+            }
+        if kind == "credit":
+            entry = max(0.01, marks[0] - marks[1])
+            return {
+                "entry": [round(entry * 0.97, 2), round(entry * 1.03, 2)],
+                "takeProfit": round(entry * 0.5, 2),
+                "stopLoss": round(entry * 1.8, 2),
+                "invalidation": "underlying breaches short strike momentum zone",
+                "maxLoss": round(max_loss, 2),
+                "contracts": contracts_for_risk(max_loss),
+            }
+        if kind == "condor":
+            entry = max(0.01, marks[0] + marks[1] - marks[2] - marks[3])
+            return {
+                "entry": [round(entry * 0.95, 2), round(entry * 1.05, 2)],
+                "takeProfit": round(entry * 0.5, 2),
+                "stopLoss": round(entry * 1.8, 2),
+                "invalidation": "price acceptance outside short strikes",
+                "maxLoss": round(max_loss, 2),
+                "contracts": contracts_for_risk(max_loss),
+            }
+        return None
+
+    def score_setup(legs, target_deltas, regime_bias=0):
+        if not all(legs):
+            return 0
+        liq = sum(1 for l in legs if l.get("liquid")) / len(legs)
+        sp = avg_spread(*legs)
+        spread_score = 1.0 if sp is not None and sp <= MAX_SPREAD_PCT else 0.4
+        delta_err = 0.0
+        n = 0
+        for l, t in zip(legs, target_deltas):
+            if l.get("delta") is None:
+                continue
+            delta_err += abs(abs(float(l["delta"])) - t)
+            n += 1
+        delta_score = max(0.0, 1.0 - (delta_err / max(1, n)) / 0.25)
+        raw = 100 * (0.40 * liq + 0.25 * spread_score + 0.25 * delta_score + 0.10 * regime_bias)
+        return int(round(max(0, min(100, raw))))
+
+    vix = 0
+    # regime bias: prefer debit/credit when VIX moderate-low, condor when VIX elevated
+    # (coarse; final check still manual)
+    try:
+        vix = float(next((r.get("iv") for r in rows if r.get("side") == "P" and r.get("dte") == 5 and r.get("strike") == 685), 0) or 0)
+    except Exception:
+        vix = 0
+
     setups = []
     if long_c and short_c and long_c.get("mark") and short_c.get("mark"):
         debit = max(0.01, float(long_c["mark"]) - float(short_c["mark"]))
         ml = debit * 100
-        setups.append({"setup": "Bull call debit spread", "example": f"Buy {fmt(long_c)} / Sell {fmt(short_c)}", "maxLossPerContract": round(ml,2), "contractsByRisk": contracts_for_risk(ml)})
+        setups.append({
+            "setup": "Bull call debit spread",
+            "example": f"Buy {fmt(long_c)} / Sell {fmt(short_c)}",
+            "maxLossPerContract": round(ml,2),
+            "contractsByRisk": contracts_for_risk(ml),
+            "qualityScore": score_setup([long_c, short_c], [0.40, 0.20], regime_bias=1.0),
+            "ticket": make_ticket("debit", [long_c, short_c], ml),
+        })
     else:
-        setups.append({"setup": "Bull call debit spread", "example": "N/A", "maxLossPerContract": None, "contractsByRisk": 0})
+        setups.append({"setup": "Bull call debit spread", "example": "N/A", "maxLossPerContract": None, "contractsByRisk": 0, "qualityScore": 0, "ticket": None})
 
     if short_p and long_p:
         width = abs(float(short_p["strike"]) - float(long_p["strike"]))
         credit = max(0.01, float(short_p.get("mark") or 0) - float(long_p.get("mark") or 0))
         ml = max(0.01, (width - credit) * 100)
-        setups.append({"setup": "Bull put credit spread", "example": f"Sell {fmt(short_p)} / Buy {fmt(long_p)}", "maxLossPerContract": round(ml,2), "contractsByRisk": contracts_for_risk(ml)})
+        setups.append({
+            "setup": "Bull put credit spread",
+            "example": f"Sell {fmt(short_p)} / Buy {fmt(long_p)}",
+            "maxLossPerContract": round(ml,2),
+            "contractsByRisk": contracts_for_risk(ml),
+            "qualityScore": score_setup([short_p, long_p], [0.25, 0.12], regime_bias=0.8),
+            "ticket": make_ticket("credit", [short_p, long_p], ml),
+        })
     else:
-        setups.append({"setup": "Bull put credit spread", "example": "N/A", "maxLossPerContract": None, "contractsByRisk": 0})
+        setups.append({"setup": "Bull put credit spread", "example": "N/A", "maxLossPerContract": None, "contractsByRisk": 0, "qualityScore": 0, "ticket": None})
 
     if short_c_ic and short_p_ic and long_c_ic and long_p_ic:
         wing = min(abs(float(long_c_ic["strike"]) - float(short_c_ic["strike"])), abs(float(short_p_ic["strike"]) - float(long_p_ic["strike"])))
         credit = max(0.01, (float(short_c_ic.get("mark") or 0)+float(short_p_ic.get("mark") or 0)-float(long_c_ic.get("mark") or 0)-float(long_p_ic.get("mark") or 0)))
         ml = max(0.01, (wing - credit) * 100)
-        setups.append({"setup": "Iron condor", "example": f"Sell {fmt(short_p_ic)}/{fmt(short_c_ic)} + Buy {fmt(long_p_ic)}/{fmt(long_c_ic)}", "maxLossPerContract": round(ml,2), "contractsByRisk": contracts_for_risk(ml)})
+        setups.append({
+            "setup": "Iron condor",
+            "example": f"Sell {fmt(short_p_ic)}/{fmt(short_c_ic)} + Buy {fmt(long_p_ic)}/{fmt(long_c_ic)}",
+            "maxLossPerContract": round(ml,2),
+            "contractsByRisk": contracts_for_risk(ml),
+            "qualityScore": score_setup([short_p_ic, short_c_ic, long_p_ic, long_c_ic], [0.18, 0.18, 0.10, 0.10], regime_bias=0.6),
+            "ticket": make_ticket("condor", [short_p_ic, short_c_ic, long_p_ic, long_c_ic], ml),
+        })
     else:
-        setups.append({"setup": "Iron condor", "example": "N/A", "maxLossPerContract": None, "contractsByRisk": 0})
+        setups.append({"setup": "Iron condor", "example": "N/A", "maxLossPerContract": None, "contractsByRisk": 0, "qualityScore": 0, "ticket": None})
+
+    setups.sort(key=lambda s: s.get("qualityScore", 0), reverse=True)
+    for i, s in enumerate(setups, 1):
+        s["rank"] = i
 
     return setups
 
