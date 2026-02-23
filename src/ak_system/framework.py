@@ -9,9 +9,12 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from .config import Paths
-from .montecarlo import PathConfig, StressConfig, evaluate_playbook_on_path, generate_path
+from .mc_options.iv_dynamics import IVDynamicsParams
+from .mc_options.models import JumpDiffusionParams, simulate_jump_diffusion_paths
+from .mc_options.simulator import FrictionConfig, simulate_strategy_paths
+from .mc_options.strategy import ExitRules, make_iron_condor, make_iron_fly, make_long_straddle, make_vertical
 from .promotion import write_proposal
-from .regime import RegimeLabel
+from .regime import RegimeLabel, classify_regime_rule_based
 from .schemas import ChangeProposal, MonteCarloResult, ValidationMetrics
 from .validator import baseline_comparator, compute_metrics
 
@@ -29,27 +32,29 @@ class Sample:
     components: Dict[str, float]
 
 
-def component_scores(playbook: str, regime: RegimeLabel, stress: StressConfig, rng: np.random.Generator) -> Dict[str, float]:
+def component_scores(
+    playbook: str,
+    regime: RegimeLabel,
+    iv_atm: float,
+    realized_vol: float,
+    exec_drag: float,
+    rng: np.random.Generator,
+) -> Dict[str, float]:
     regime_score = 0.8 if (playbook == "trend_debit" and regime.trend == "trend") or (
         playbook == "mean_revert_credit" and regime.trend == "mean_revert"
     ) else 0.45
 
-    vol_score = 0.8 if (playbook == "long_vol_event" and regime.vol == "vol_expanding") or (
-        playbook != "long_vol_event" and regime.vol == "vol_contracting"
-    ) else 0.4
+    iv_rv = iv_atm / max(realized_vol, 1e-6)
+    vol_score = float(np.clip(1.2 - abs(iv_rv - 1.0), 0.05, 0.95))
 
     structure_score = {
-        "trend_debit": 0.68,
-        "mean_revert_credit": 0.64,
-        "long_vol_event": 0.62,
+        "trend_debit": 0.70,
+        "mean_revert_credit": 0.62,
+        "long_vol_event": 0.66,
     }[playbook]
 
-    # Simplified event stress proxy
-    event_score = float(np.clip(0.75 - rng.uniform(0, 0.45), 0.05, 0.95))
-
-    # Execution worsens with spread/slippage stress
-    execution_penalty = (stress.spread_widen_bps + stress.slippage_shock_bps) / 200.0
-    execution_score = float(np.clip(0.9 - execution_penalty - rng.uniform(0, 0.15), 0.05, 0.95))
+    event_score = float(np.clip(0.70 - rng.uniform(0, 0.35), 0.05, 0.95))
+    execution_score = float(np.clip(1.0 - exec_drag, 0.05, 0.95))
 
     return {
         "Regime": regime_score,
@@ -60,27 +65,96 @@ def component_scores(playbook: str, regime: RegimeLabel, stress: StressConfig, r
     }
 
 
+def _playbook_to_strategy(playbook: str, S0: float, expiry_years: float):
+    k = round(S0)
+    if playbook == "trend_debit":
+        return make_vertical("call", long_strike=k, short_strike=k + max(1, round(S0 * 0.005)), expiry_years=expiry_years)
+    if playbook == "mean_revert_credit":
+        wing = max(2.0, round(S0 * 0.01))
+        return make_iron_condor(k - wing, k - 2 * wing, k + wing, k + 2 * wing, expiry_years=expiry_years)
+    return make_long_straddle(k, expiry_years=expiry_years)
+
+
 def generate_samples(n_paths: int, seed: int = 42) -> List[Sample]:
+    """Generate OOS samples from REAL options-MC outcomes (not synthetic toy R)."""
     rng = np.random.default_rng(seed)
-    pcfg = PathConfig()
-    scfg = StressConfig()
     samples: List[Sample] = []
 
-    for _ in range(n_paths):
-        prices, vol = generate_path(pcfg, rng)
-        for pb in PLAYBOOKS:
-            r, _failure, regime = evaluate_playbook_on_path(pb, prices, vol, scfg, rng)
-            comps = component_scores(pb, regime, scfg, rng)
-            slippage_bps = (1.0 - comps["Execution"]) * 100
+    S0 = 100.0
+    expiry_years = 7 / 365
+    n_steps = 28
+    dt = expiry_years / n_steps
+    iv_params = IVDynamicsParams(iv_atm=0.25)
+    exits = ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25)
+    fr = FrictionConfig(spread_bps=30, slippage_bps=8, partial_fill_prob=0.1)
+
+    # regime labels from underlying path realizations
+    u_paths = simulate_jump_diffusion_paths(
+        S0,
+        n_paths=n_paths,
+        n_steps=n_steps,
+        dt=dt,
+        params=JumpDiffusionParams(mu=0.03, sigma=0.22, jump_lambda=0.35, jump_mu=-0.06, jump_sigma=0.18),
+        seed=seed + 77,
+    )
+    regimes: List[RegimeLabel] = []
+    rv_list: List[float] = []
+    for i in range(n_paths):
+        p = u_paths[i]
+        ret = np.diff(np.log(np.maximum(p, 1e-12)))
+        vol_proxy = np.abs(ret)
+        regimes.append(classify_regime_rule_based(p, vol_proxy, lookback=min(20, len(vol_proxy))))
+        rv_list.append(float(np.std(ret) * np.sqrt(252)))
+
+    for pb in PLAYBOOKS:
+        strat = _playbook_to_strategy(pb, S0=S0, expiry_years=expiry_years)
+
+        pb_seed = seed + PLAYBOOKS.index(pb) * 137
+        pnl_cost, touch = simulate_strategy_paths(
+            strategy=strat,
+            S0=S0,
+            r=0.03,
+            q=0.0,
+            n_paths=n_paths,
+            n_steps=n_steps,
+            dt=dt,
+            iv_params=iv_params,
+            exit_rules=exits,
+            friction=fr,
+            model="jump",
+            seed=pb_seed,
+        )
+        pnl_clean, _ = simulate_strategy_paths(
+            strategy=strat,
+            S0=S0,
+            r=0.03,
+            q=0.0,
+            n_paths=n_paths,
+            n_steps=n_steps,
+            dt=dt,
+            iv_params=iv_params,
+            exit_rules=exits,
+            friction=FrictionConfig(spread_bps=1, slippage_bps=0, partial_fill_prob=0.0),
+            model="jump",
+            seed=pb_seed,
+        )
+
+        drag = np.maximum(0.0, pnl_clean - pnl_cost)
+        for i in range(n_paths):
+            reg = regimes[i]
+            realized_vol = rv_list[i]
+            exec_drag = float(np.clip(drag[i] / max(abs(pnl_clean[i]) + 1e-6, 1.0), 0, 1))
+            comps = component_scores(pb, reg, iv_atm=iv_params.iv_atm, realized_vol=realized_vol, exec_drag=exec_drag, rng=rng)
             samples.append(
                 Sample(
                     playbook=pb,
-                    regime=regime.key,
-                    r=r,
-                    slippage_bps=slippage_bps,
+                    regime=reg.key,
+                    r=float(pnl_cost[i]),
+                    slippage_bps=float(exec_drag * 100),
                     components=comps,
                 )
             )
+
     return samples
 
 

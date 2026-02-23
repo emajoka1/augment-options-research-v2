@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-02-23T20:56:16.960424+00:00",
+  "framework": "Regime->Structure->Execution->Risk Monte Carlo OOS",
+  "n_samples": 900,
+  "train_size": 630,
+  "test_size": 270,
+  "baseline_weights": {
+    "Regime": 0.3,
+    "Vol": 0.2,
+    "Structure": 0.2,
+    "Event": 0.15,
+    "Execution": 0.15
+  },
+  "recalibrated_weights": {
+    "Regime": 0.0,
+    "Vol": 0.0,
+    "Structure": 0.351965646563138,
+    "Event": 0.0,
+    "Execution": 0.6480343534368619
+  },
+  "baseline_metrics": {
+    "win_rate": 0.5777777777777777,
+    "avg_r": 0.1496293189477261,
+    "max_drawdown": 8.343629747183149,
+    "tail_loss": -1.3963125842784108,
+    "slippage_sensitivity": 0.3255804447494212,
+    "sample_size": 90
+  },
+  "candidate_metrics": {
+    "win_rate": 0.5222222222222223,
+    "avg_r": -0.0005718705172107474,
+    "max_drawdown": 7.914919284256888,
+    "tail_loss": -2.012182222399398,
+    "slippage_sensitivity": 0.3560465583559391,
+    "sample_size": 90
+  },
+  "oos_delta": -0.06390192852644845,
+  "regime_breakdown": {
+    "mean_revert|vol_contracting": {
+      "baseline_avg_r": 0.27553185371745315,
+      "candidate_avg_r": 0.20985364452387795,
+      "delta_avg_r": -0.0656782091935752
+    },
+    "mean_revert|vol_expanding": {
+      "baseline_avg_r": 0.3210575863482446,
+      "candidate_avg_r": 0.20657187100818944,
+      "delta_avg_r": -0.11448571534005517
+    },
+    "trend|vol_contracting": {
+      "baseline_avg_r": 0.29717026534084195,
+      "candidate_avg_r": 0.08151032821243732,
+      "delta_avg_r": -0.21565993712840464
+    },
+    "trend|vol_expanding": {
+      "baseline_avg_r": -0.19749554809895128,
+      "candidate_avg_r": -0.3513045063265281,
+      "delta_avg_r": -0.15380895822757681
+    }
+  }
+}
