@@ -1,0 +1,21 @@
+{
+  "item_id": "ki-e052bcd8d0",
+  "title": "Short premium requires vol-context confirmation",
+  "claim": "In neutral-to-unstable regime, only short premium when IV percentile >70 or clear vol contraction exists.",
+  "evidence": [
+    {
+      "source_id": "trade-log-sample",
+      "source_type": "trade_log",
+      "excerpt": "Reactive trades performed better than passive premium selling in unstable tape."
+    }
+  ],
+  "confidence": 0.55,
+  "last_verified_date": "2026-02-23",
+  "expiry": "2026-03-09",
+  "status": "UNVERIFIED",
+  "tags": [
+    "regime",
+    "volatility",
+    "short-premium"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "status": "approved-baseline",
+  "components": {
+    "Regime": 0.30,
+    "Vol": 0.20,
+    "Structure": 0.20,
+    "Event": 0.15,
+    "Execution": 0.15
+  },
+  "thresholds": {
+    "go": 0.75,
+    "wait": 0.60,
+    "no_go": 0.0
+  },
+  "notes": "Weights must be recalibrated using out-of-sample performance only."
+}

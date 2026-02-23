@@ -1,0 +1,37 @@
+modes:
+  research_agent:
+    write_prefixes:
+      - kb/
+      - experiments/
+      - proposals/
+    can_promote: false
+  production_agent:
+    read_prefixes:
+      - kb/decisions/approved/
+      - kb/rules/
+      - kb/playbooks/
+      - kb/trade_logs/
+    can_write: false
+
+validation:
+  min_sample_size: 30
+  metrics_required:
+    - win_rate
+    - avg_r
+    - max_drawdown
+    - tail_loss
+    - slippage_sensitivity
+  monte_carlo_scenarios:
+    - vol_expansion
+    - gap_down
+    - gap_up
+
+scoring:
+  components:
+    Regime: 0.30
+    Vol: 0.20
+    Structure: 0.20
+    Event: 0.15
+    Execution: 0.15
+  recalibration: out_of_sample_only
+  explainability_required: true
