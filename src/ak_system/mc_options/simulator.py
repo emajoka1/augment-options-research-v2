@@ -4,8 +4,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .iv_dynamics import IVDynamicsParams, surface_iv
+from .iv_dynamics import IVDynamicsParams, evolve_iv_state, surface_iv
+from .models import GBMParams, JumpDiffusionParams, simulate_gbm_paths, simulate_jump_diffusion_paths
 from .pricer import bs_price
+from .strategy import ExitRules, StrategyDef, should_exit, strategy_mid_value
 
 
 @dataclass
@@ -57,3 +59,112 @@ def reprice_option_path_with_surface(
             option_type=req.option_type,
         )
     return prices
+
+
+@dataclass
+class FrictionConfig:
+    spread_bps: float = 30.0
+    slippage_bps: float = 8.0
+    partial_fill_prob: float = 0.1
+    min_tick: float = 0.01
+
+
+def _exec_price(mid: float, side: str, friction: FrictionConfig, rng: np.random.Generator) -> float:
+    spread = max(friction.min_tick, mid * friction.spread_bps / 10000)
+    slip = friction.slippage_bps / 10000 * max(mid, friction.min_tick)
+    if rng.random() < friction.partial_fill_prob:
+        slip *= 1.8
+    if side == "buy":
+        return mid + 0.5 * spread + slip
+    return max(friction.min_tick, mid - 0.5 * spread - slip)
+
+
+def simulate_strategy_paths(
+    strategy: StrategyDef,
+    S0: float,
+    r: float,
+    q: float,
+    n_paths: int,
+    n_steps: int,
+    dt: float,
+    iv_params: IVDynamicsParams,
+    exit_rules: ExitRules,
+    friction: FrictionConfig,
+    model: str = "jump",
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    if model == "gbm":
+        paths = simulate_gbm_paths(S0, n_paths, n_steps, dt, GBMParams(mu=r - q, sigma=iv_params.iv_atm), seed=seed)
+    else:
+        paths = simulate_jump_diffusion_paths(
+            S0,
+            n_paths,
+            n_steps,
+            dt,
+            JumpDiffusionParams(mu=r - q, sigma=iv_params.iv_atm, jump_lambda=0.35, jump_mu=-0.05, jump_sigma=0.18),
+            seed=seed,
+        )
+
+    pnl = np.zeros(n_paths)
+    touch = np.zeros(n_paths)
+
+    for i in range(n_paths):
+        path = paths[i]
+        rets = np.diff(np.log(np.maximum(path, 1e-12)))
+        iv_state = evolve_iv_state(iv_params, n_steps=n_steps, dt=dt, returns=rets, seed=seed + i)
+
+        tau0 = strategy.expiry_years
+        iv_map0 = {leg.strike: surface_iv(path[0], leg.strike, tau0, iv_state, 0, iv_params) for leg in strategy.legs}
+        entry_mid = strategy_mid_value(strategy, path[0], r, q, tau0, iv_map0)
+
+        # Convert strategy value to executed entry cost with leg-level friction.
+        entry_cost = 0.0
+        for leg in strategy.legs:
+            mid = bs_price(path[0], leg.strike, r, q, iv_map0[leg.strike], tau0, leg.option_type)
+            if leg.side == "long":
+                px = _exec_price(mid, "buy", friction, rng)
+                entry_cost += px * leg.qty
+            else:
+                px = _exec_price(mid, "sell", friction, rng)
+                entry_cost -= px * leg.qty
+
+        closed = False
+        final_val = entry_mid
+        iv_shift = 0.0
+        for t in range(1, n_steps + 1):
+            tau = max(strategy.expiry_years - t * dt, 1e-6)
+            iv_map = {leg.strike: surface_iv(path[t], leg.strike, tau, iv_state, t, iv_params) for leg in strategy.legs}
+            val = strategy_mid_value(strategy, path[t], r, q, tau, iv_map)
+            path_pnl = val - entry_cost
+            iv_shift = iv_state["iv_atm"][t] - iv_state["iv_atm"][0]
+            dte_days = tau * 365
+
+            # crude PoT proxy: touched 1.5x risk from entry magnitude
+            if abs(path_pnl) >= 1.5 * max(abs(entry_cost), 1e-6):
+                touch[i] = 1
+
+            if should_exit(path_pnl, abs(entry_cost), dte_days, iv_shift, exit_rules, is_short_premium=(entry_cost < 0)):
+                final_val = val
+                closed = True
+                break
+            final_val = val
+
+        # exit execution at final value with friction
+        exit_val = 0.0
+        tau_end = max(strategy.expiry_years - n_steps * dt, 1e-6)
+        t_used = min(n_steps, t if 't' in locals() else n_steps)
+        iv_map_end = {leg.strike: surface_iv(path[t_used], leg.strike, tau_end, iv_state, t_used, iv_params) for leg in strategy.legs}
+        for leg in strategy.legs:
+            mid = bs_price(path[t_used], leg.strike, r, q, iv_map_end[leg.strike], tau_end, leg.option_type)
+            # closing side opposite of opening side
+            if leg.side == "long":
+                px = _exec_price(mid, "sell", friction, rng)
+                exit_val += px * leg.qty
+            else:
+                px = _exec_price(mid, "buy", friction, rng)
+                exit_val -= px * leg.qty
+
+        pnl[i] = exit_val - entry_cost
+
+    return pnl, touch

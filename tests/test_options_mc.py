@@ -3,10 +3,11 @@ import math
 import numpy as np
 
 from ak_system.mc_options.iv_dynamics import IVDynamicsParams, evolve_iv_state, fit_surface_from_snapshot, surface_iv
+from ak_system.mc_options.metrics import compute_metrics
 from ak_system.mc_options.models import GBMParams, simulate_gbm_paths
 from ak_system.mc_options.pricer import bs_greeks, bs_price, put_call_parity_gap
-from ak_system.mc_options.strategy import make_iron_fly, max_profit_max_loss, strategy_mid_value
-from ak_system.mc_options.simulator import RepriceRequest, reprice_option_path
+from ak_system.mc_options.strategy import ExitRules, make_iron_fly, make_long_straddle, max_profit_max_loss, strategy_mid_value
+from ak_system.mc_options.simulator import FrictionConfig, RepriceRequest, reprice_option_path, simulate_strategy_paths
 
 
 def test_put_call_parity_holds():
@@ -64,3 +65,60 @@ def test_iron_fly_defined_risk_shape():
     assert mx > 0
     assert mn < 0
     assert abs(mn) < 10  # bounded by wing width in this simple setup
+
+
+def test_strategy_mc_reproducible_and_metrics():
+    strat = make_long_straddle(K=100, expiry_years=5 / 365)
+    pnl1, touch1 = simulate_strategy_paths(
+        strategy=strat,
+        S0=100,
+        r=0.02,
+        q=0.0,
+        n_paths=120,
+        n_steps=20,
+        dt=(5 / 365) / 20,
+        iv_params=IVDynamicsParams(iv_atm=0.25),
+        exit_rules=ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25),
+        friction=FrictionConfig(spread_bps=20, slippage_bps=5, partial_fill_prob=0.1),
+        model="jump",
+        seed=11,
+    )
+    pnl2, touch2 = simulate_strategy_paths(
+        strategy=strat,
+        S0=100,
+        r=0.02,
+        q=0.0,
+        n_paths=120,
+        n_steps=20,
+        dt=(5 / 365) / 20,
+        iv_params=IVDynamicsParams(iv_atm=0.25),
+        exit_rules=ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25),
+        friction=FrictionConfig(spread_bps=20, slippage_bps=5, partial_fill_prob=0.1),
+        model="jump",
+        seed=11,
+    )
+    assert np.allclose(pnl1, pnl2)
+    m = compute_metrics(pnl1, touch1)
+    assert 0 <= m.pop <= 1
+
+
+def test_wider_spread_reduces_ev():
+    strat = make_long_straddle(K=100, expiry_years=5 / 365)
+    common = dict(
+        strategy=strat,
+        S0=100,
+        r=0.02,
+        q=0.0,
+        n_paths=160,
+        n_steps=20,
+        dt=(5 / 365) / 20,
+        iv_params=IVDynamicsParams(iv_atm=0.25),
+        exit_rules=ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25),
+        model="jump",
+        seed=44,
+    )
+    pnl_tight, _ = simulate_strategy_paths(**common, friction=FrictionConfig(spread_bps=15, slippage_bps=4, partial_fill_prob=0.05))
+    pnl_wide, _ = simulate_strategy_paths(**common, friction=FrictionConfig(spread_bps=80, slippage_bps=20, partial_fill_prob=0.30))
+    m_tight = compute_metrics(pnl_tight)
+    m_wide = compute_metrics(pnl_wide)
+    assert m_wide.ev <= m_tight.ev
