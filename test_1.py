@@ -430,8 +430,34 @@ class IVCalculator(QMainWindow):
             if not path:
                 return
             df = pd.read_excel(path)
+
+            # If both call/put premium columns exist, split into two legs when both are present.
+            if "Call Premium" in df.columns or "Put Premium" in df.columns:
+                rows = []
+                for _, r in df.iterrows():
+                    cp = r.get("Call Premium", np.nan)
+                    pp = r.get("Put Premium", np.nan)
+                    base = r.to_dict()
+                    if pd.notna(cp):
+                        rc = dict(base)
+                        rc["Type"] = "Call"
+                        rc["Premium"] = cp
+                        rows.append(rc)
+                    if pd.notna(pp):
+                        rp = dict(base)
+                        rp["Type"] = "Put"
+                        rp["Premium"] = pp
+                        rows.append(rp)
+                    if pd.isna(cp) and pd.isna(pp):
+                        rows.append(base)
+                df = pd.DataFrame(rows)
+
             if "Type" not in df.columns:
-                df["Type"] = np.where(df.get("Call Premium", pd.Series(index=df.index)).notna(), "Call", "Put")
+                df["Type"] = np.where(df.get("Premium", pd.Series(index=df.index)).notna(), "Call", "Put")
+            if "Premium" not in df.columns:
+                df["Premium"] = pd.to_numeric(df.get("Premium", 0), errors="coerce").fillna(0)
+            if "Qty" not in df.columns:
+                df["Qty"] = 1
             if "Entry Date" not in df.columns:
                 df["Entry Date"] = pd.Timestamp(datetime.today().date())
             if "Expiry Date" not in df.columns:
@@ -457,7 +483,10 @@ class IVCalculator(QMainWindow):
                 self.table.setItem(i, j, QTableWidgetItem(str(row.get(c, ""))))
 
     def _table_to_df(self):
-        cols = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+        cols = []
+        for i in range(self.table.columnCount()):
+            h = self.table.horizontalHeaderItem(i)
+            cols.append(h.text() if h is not None else f"col_{i}")
         records = []
         for r in range(self.table.rowCount()):
             rec = {}
@@ -636,7 +665,14 @@ class IVCalculator(QMainWindow):
             path, _ = QFileDialog.getSaveFileName(self, "Export Report", "stress_report.xlsx", "Excel (*.xlsx)")
             if not path:
                 return
-            with pd.ExcelWriter(path, engine="openpyxl") as w:
+            # Try openpyxl first; fall back to default writer if unavailable.
+            writer_kwargs = {"engine": "openpyxl"}
+            try:
+                writer = pd.ExcelWriter(path, **writer_kwargs)
+            except Exception:
+                writer = pd.ExcelWriter(path)
+
+            with writer as w:
                 self.df_journal.to_excel(w, index=False, sheet_name="Trade Journal")
                 pd.DataFrame([{
                     "timestamp": datetime.now(),
