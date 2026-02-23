@@ -50,6 +50,28 @@ def build_strategy(example: str, spot: float, expiry_years: float):
     raise ValueError("unknown example")
 
 
+def strategy_signature(strategy) -> tuple:
+    legs = tuple((leg.side, leg.option_type, float(leg.strike), int(leg.qty), float(leg.expiry_years or 0.0)) for leg in strategy.legs)
+    return strategy.name, legs
+
+
+def assert_paired_seed_policy(
+    baseline_model: str,
+    sensitivity_model: str,
+    baseline_strategy,
+    sensitivity_strategy,
+):
+    if baseline_model != sensitivity_model:
+        raise ValueError("Seed policy assertion failed: paired comparison requires identical model")
+
+    b_name, b_legs = strategy_signature(baseline_strategy)
+    s_name, s_legs = strategy_signature(sensitivity_strategy)
+    if b_name != s_name:
+        raise ValueError("Seed policy assertion failed: paired comparison requires identical strategy name")
+    if b_legs != s_legs:
+        raise ValueError("Seed policy assertion failed: paired comparison requires identical structural legs")
+
+
 def infer_regime_distribution(model: str, spot: float, iv_atm: float, n_steps: int, dt: float, r: float, q: float, seed: int) -> dict:
     n_probe = 300
     if model == "gbm":
@@ -146,6 +168,9 @@ def main():
     metrics = compute_metrics(pnl, pot_flags)
 
     # CRN only for same-model/same-structure friction sensitivity
+    comparison_mode = "paired"
+    assert_paired_seed_policy(args.model, args.model, strategy, strategy)
+
     pnl_wide, _ = simulate_strategy_paths(
         strategy=strategy,
         S0=spot,
@@ -226,10 +251,11 @@ def main():
             "event_risk_high": args.event_risk_high,
         },
         "randomness_policy": {
+            "comparison_mode": comparison_mode,
             "base_seed": base_seed,
             "sensitivity_seed": base_seed,
             "crn_scope": "same_model_same_structure_friction_only",
-            "cross_model_or_cross_structure": "independent_seeds_required",
+            "cross_model_or_cross_structure": "unpaired_independent_seeds_required",
         },
         "calibration": {
             "iv_atm": ivp.iv_atm,
