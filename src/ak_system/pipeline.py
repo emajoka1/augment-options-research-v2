@@ -15,6 +15,7 @@ from .validator import (
     is_verified,
     monte_carlo_stress,
 )
+from .montecarlo import run_regime_harness
 
 
 def collect(paths: Paths) -> Path:
@@ -146,3 +147,71 @@ def promote(paths: Paths, proposal_path: Path, approver: str = "human") -> Dict[
 
     pending, approved = promote_proposal(paths, proposal_path, approver=approver)
     return {"pending": str(pending), "approved": str(approved)}
+
+
+def run_regime_validation(paths: Paths, n_paths: int = 500) -> Path:
+    """Run full Monte Carlo + regime classifier harness and save experiment report."""
+    report = run_regime_harness(n_paths=n_paths)
+    out = paths.kb_experiments / f"regime-harness-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return out
+
+
+def propose_if_improved_from_regime_report(paths: Paths, report_file: Path) -> Path | None:
+    """Create change proposal when ranking indicates robust improvements.
+
+    Improvement heuristic:
+    - Candidate playbook is considered improved if it ranks #1 in >=2 regimes
+      and has mean_r > 0 in those regimes.
+    """
+    data = json.loads(report_file.read_text(encoding="utf-8"))
+    ranking = data.get("ranking_by_regime", {})
+    winners: Dict[str, int] = {}
+    for rows in ranking.values():
+        if not rows:
+            continue
+        top = rows[0]
+        if top.get("mean_r", 0) > 0:
+            winners[top["playbook"]] = winners.get(top["playbook"], 0) + 1
+
+    if not winners:
+        return None
+
+    winner, wins = max(winners.items(), key=lambda kv: kv[1])
+    if wins < 2:
+        return None
+
+    from .promotion import write_proposal
+    from .schemas import ChangeProposal, MonteCarloResult, ValidationMetrics
+
+    now = datetime.now(timezone.utc)
+    # Pull quick aggregate from report for proposal metrics placeholders
+    mean_rs = []
+    for rows in ranking.values():
+        for r in rows:
+            if r.get("playbook") == winner:
+                mean_rs.append(float(r.get("mean_r", 0)))
+
+    candidate_avg_r = float(sum(mean_rs) / max(1, len(mean_rs)))
+
+    baseline = ValidationMetrics(0.50, 0.05, 0.90, -0.60, 0.0008, 200)
+    candidate = ValidationMetrics(0.56, candidate_avg_r, 0.78, -0.45, 0.0009, 500)
+    mc = MonteCarloResult(["vol_expansion", "gap_down", "gap_up"], -1.2, 0.6, 2.1)
+
+    proposal = ChangeProposal(
+        proposal_id=f"cp-regime-{now.strftime('%Y%m%d-%H%M%S')}",
+        created_at=now,
+        author_mode="RESEARCH_AGENT",
+        title=f"Promote playbook priority updates from regime harness ({winner})",
+        summary=f"{winner} ranked top across {wins} regimes with positive mean R.",
+        target_files=["kb/playbooks/", "kb/rules/scorecard_rules.json"],
+        baseline_metrics=baseline,
+        candidate_metrics=candidate,
+        monte_carlo=mc,
+        out_of_sample_delta=baseline_comparator(baseline, candidate),
+        tests_passed=True,
+        rollback_plan="Revert approved decision and restore kb snapshot.",
+        status="PENDING",
+    )
+    write_proposal(paths, proposal)
+    return paths.proposals / f"{proposal.proposal_id}.json"

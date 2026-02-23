@@ -7,4 +7,6 @@ __all__ = [
     "validator",
     "pipeline",
     "promotion",
+    "regime",
+    "montecarlo",
 ]

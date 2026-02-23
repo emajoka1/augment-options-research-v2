@@ -53,7 +53,10 @@ From workspace root:
 ```bash
 PYTHONPATH=src python3 scripts/ak_scheduler.py --mode once
 PYTHONPATH=src python3 scripts/ak_scheduler.py --mode daemon
+PYTHONPATH=src python3 scripts/ak_regime_harness.py --paths 500
 ```
+
+The regime harness writes JSON + markdown reports to `kb/experiments/` and auto-creates a proposal in `proposals/` when improvements are detected.
 
 ## Approval flow
 

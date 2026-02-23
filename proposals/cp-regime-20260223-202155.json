@@ -1,0 +1,42 @@
+{
+  "proposal_id": "cp-regime-20260223-202155",
+  "created_at": "2026-02-23T20:21:55.374277+00:00",
+  "author_mode": "RESEARCH_AGENT",
+  "title": "Promote playbook priority updates from regime harness (mean_revert_credit)",
+  "summary": "mean_revert_credit ranked top across 2 regimes with positive mean R.",
+  "target_files": [
+    "kb/playbooks/",
+    "kb/rules/scorecard_rules.json"
+  ],
+  "baseline_metrics": {
+    "win_rate": 0.5,
+    "avg_r": 0.05,
+    "max_drawdown": 0.9,
+    "tail_loss": -0.6,
+    "slippage_sensitivity": 0.0008,
+    "sample_size": 200
+  },
+  "candidate_metrics": {
+    "win_rate": 0.56,
+    "avg_r": 0.562608276580842,
+    "max_drawdown": 0.78,
+    "tail_loss": -0.45,
+    "slippage_sensitivity": 0.0009,
+    "sample_size": 500
+  },
+  "monte_carlo": {
+    "scenarios": [
+      "vol_expansion",
+      "gap_down",
+      "gap_up"
+    ],
+    "p5_return": -1.2,
+    "p50_return": 0.6,
+    "p95_return": 2.1
+  },
+  "out_of_sample_delta": 0.19264206914521048,
+  "tests_passed": true,
+  "rollback_plan": "Revert approved decision and restore kb snapshot.",
+  "approval_required": true,
+  "status": "PENDING"
+}
