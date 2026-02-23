@@ -94,10 +94,11 @@ def simulate_strategy_paths(
     seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
+    heston_var = None
     if model == "gbm":
         paths = simulate_gbm_paths(S0, n_paths, n_steps, dt, GBMParams(mu=r - q, sigma=iv_params.iv_atm), seed=seed)
     elif model == "heston":
-        paths, _var = simulate_heston_paths(
+        paths, heston_var = simulate_heston_paths(
             S0,
             n_paths,
             n_steps,
@@ -122,6 +123,11 @@ def simulate_strategy_paths(
         path = paths[i]
         rets = np.diff(np.log(np.maximum(path, 1e-12)))
         iv_state = evolve_iv_state(iv_params, n_steps=n_steps, dt=dt, returns=rets, seed=seed + i)
+
+        # Tie ATM IV to simulated Heston variance when model == heston:
+        # sigma_t = sqrt(v_t), then keep skew/curv/term from fitted surface dynamics.
+        if model == "heston" and heston_var is not None:
+            iv_state["iv_atm"] = np.clip(np.sqrt(np.maximum(heston_var[i], 1e-12)), iv_params.iv_floor, iv_params.iv_cap)
 
         tau0 = strategy.expiry_years
         iv_map0 = {leg.strike: surface_iv(path[0], leg.strike, tau0, iv_state, 0, iv_params) for leg in strategy.legs}
