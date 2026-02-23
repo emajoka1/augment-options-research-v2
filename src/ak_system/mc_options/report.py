@@ -54,9 +54,10 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - baseline slippage bps: {stress.get('slippage_bps')}
 - partial fill prob: {stress.get('partial_fill_prob')}
 
-## Survival-first Gates
-- EV > +0.05R: {gates.get('ev_gt_0.05R')}
-- CVaR95 > -1.0R: {gates.get('cvar95_gt_-1R')}
+## Survival-first Gates (Regime-conditioned)
+- Dominant regime: **{gates.get('regime')}**
+- EV threshold (R): {gates.get('ev_threshold_R')} | pass={gates.get('ev_gate')}
+- CVaR threshold (R): {gates.get('cvar_threshold_R')} | pass={gates.get('cvar_gate')}
 - POP/PoT gate: {gates.get('pop_or_pot')}
 - Slippage sensitivity gate: {gates.get('slippage_sensitivity_ok')}
 - ALLOW TRADE: **{gates.get('allow_trade')}**

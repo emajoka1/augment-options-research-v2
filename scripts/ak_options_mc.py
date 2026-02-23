@@ -14,9 +14,11 @@ if str(SRC) not in sys.path:
 from ak_system.config import build_paths, ensure_dirs
 from ak_system.mc_options.calibration import calibrate_from_snapshot, defaults_from_market, parse_chain_snapshot
 from ak_system.mc_options.metrics import compute_metrics, percentiles
+from ak_system.mc_options.models import GBMParams, HestonParams, JumpDiffusionParams, simulate_gbm_paths, simulate_heston_paths, simulate_jump_diffusion_paths
 from ak_system.mc_options.report import write_report_json_md
 from ak_system.mc_options.simulator import FrictionConfig, simulate_strategy_paths
 from ak_system.mc_options.strategy import ExitRules, compute_breakevens, make_iron_fly, make_long_straddle
+from ak_system.regime import classify_regime_rule_based
 
 
 def build_strategy(example: str, spot: float, expiry_years: float):
@@ -25,6 +27,40 @@ def build_strategy(example: str, spot: float, expiry_years: float):
     if example == "long_straddle":
         return make_long_straddle(K=round(spot), expiry_years=expiry_years, qty=1)
     raise ValueError("unknown example")
+
+
+def infer_dominant_regime(model: str, spot: float, iv_atm: float, n_steps: int, dt: float, r: float, q: float, seed: int) -> str:
+    n_probe = 300
+    if model == "gbm":
+        paths = simulate_gbm_paths(spot, n_probe, n_steps, dt, params=GBMParams(mu=r - q, sigma=max(0.05, iv_atm)), seed=seed)
+    elif model == "heston":
+        paths, _ = simulate_heston_paths(
+            spot,
+            n_probe,
+            n_steps,
+            dt,
+            params=HestonParams(mu=r - q, v0=max(1e-8, iv_atm**2), theta=max(1e-8, iv_atm**2)),
+            seed=seed,
+        )
+    else:
+        paths = simulate_jump_diffusion_paths(
+            spot,
+            n_probe,
+            n_steps,
+            dt,
+            params=JumpDiffusionParams(mu=r - q, sigma=max(0.05, iv_atm), jump_lambda=0.35, jump_mu=-0.05, jump_sigma=0.18),
+            seed=seed,
+        )
+
+    counts = {}
+    for i in range(n_probe):
+        p = paths[i]
+        ret = (p[1:] / p[:-1] - 1.0)
+        vol_proxy = abs(ret)
+        lbl = classify_regime_rule_based(p, vol_proxy, lookback=min(20, len(vol_proxy))).key
+        counts[lbl] = counts.get(lbl, 0) + 1
+
+    return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
 def main():
@@ -114,19 +150,43 @@ def main():
     entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
     breakevens = compute_breakevens(strategy, entry_proxy)
 
-    # survival-first gates in R-space
+    # regime-conditioned survival-first gates in R-space
     R_unit = max(abs(metrics.min_pl), 1e-6)
     ev_r = metrics.ev / R_unit
     cvar_r = metrics.cvar95 / R_unit
     is_short_premium = strategy.name in {"iron_fly", "iron_condor"}
 
+    dominant_regime = infer_dominant_regime(
+        model=args.model,
+        spot=spot,
+        iv_atm=ivp.iv_atm,
+        n_steps=n_steps,
+        dt=dt,
+        r=args.r,
+        q=args.q,
+        seed=args.seed + 7,
+    )
+
+    if dominant_regime == "trend|vol_expanding":
+        ev_req = 0.10
+        cvar_req = -0.70
+    elif dominant_regime == "mean_revert|vol_contracting":
+        ev_req = 0.05
+        cvar_req = -1.00
+    else:
+        ev_req = 0.07
+        cvar_req = -0.85
+
     gate = {
-        "ev_gt_0.05R": ev_r > 0.05,
-        "cvar95_gt_-1R": cvar_r > -1.0,
+        "regime": dominant_regime,
+        "ev_threshold_R": ev_req,
+        "cvar_threshold_R": cvar_req,
+        "ev_gate": ev_r > ev_req,
+        "cvar_gate": cvar_r > cvar_req,
         "pop_or_pot": (metrics.pop > 0.55) if is_short_premium else (metrics.pot > 0.45),
         "slippage_sensitivity_ok": abs(m_wide.ev - metrics.ev) / R_unit < 0.35,
     }
-    gate["allow_trade"] = all(gate.values())
+    gate["allow_trade"] = bool(gate["ev_gate"] and gate["cvar_gate"] and gate["pop_or_pot"] and gate["slippage_sensitivity_ok"])
 
     payload = {
         "assumptions": {
