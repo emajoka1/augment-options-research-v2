@@ -6,15 +6,13 @@ import json
 import sys
 from pathlib import Path
 
-import numpy as np
-
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ak_system.config import build_paths, ensure_dirs
-from ak_system.mc_options.calibration import defaults_from_market
+from ak_system.mc_options.calibration import defaults_from_market, fit_iv_params_from_snapshot, parse_chain_snapshot
 from ak_system.mc_options.iv_dynamics import IVDynamicsParams
 from ak_system.mc_options.metrics import compute_metrics, percentiles
 from ak_system.mc_options.report import write_report_json_md
@@ -39,8 +37,9 @@ def main():
     p.add_argument("--n-paths", type=int, default=1500)
     p.add_argument("--dt-days", type=float, default=0.25)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--model", choices=["gbm", "jump"], default="jump")
+    p.add_argument("--model", choices=["gbm", "jump", "heston"], default="jump")
     p.add_argument("--example", choices=["iron_fly", "long_straddle"], default="iron_fly")
+    p.add_argument("--snapshot-file", type=str, default=None, help="Path to chain snapshot JSON/CSV (spot, strike, iv)")
     p.add_argument("--spread-bps", type=float, default=30.0)
     p.add_argument("--slippage-bps", type=float, default=8.0)
     p.add_argument("--partial-fill-prob", type=float, default=0.1)
@@ -54,14 +53,21 @@ def main():
     n_steps = max(2, int(args.expiry_days / args.dt_days))
     dt = expiry_years / n_steps
 
-    _, _, ivp = defaults_from_market(spot=args.spot, iv_atm=0.25)
-    strategy = build_strategy(args.example, args.spot, expiry_years)
+    spot = args.spot
+    if args.snapshot_file:
+        snap = parse_chain_snapshot(args.snapshot_file)
+        spot = float(snap.spot)
+        ivp = fit_iv_params_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs)
+    else:
+        _, _, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
+
+    strategy = build_strategy(args.example, spot, expiry_years)
     exits = ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25)
     friction = FrictionConfig(spread_bps=args.spread_bps, slippage_bps=args.slippage_bps, partial_fill_prob=args.partial_fill_prob)
 
     pnl, touch = simulate_strategy_paths(
         strategy=strategy,
-        S0=args.spot,
+        S0=spot,
         r=args.r,
         q=args.q,
         n_paths=args.n_paths,
@@ -79,7 +85,7 @@ def main():
     # sensitivity shocks
     pnl_wide, _ = simulate_strategy_paths(
         strategy=strategy,
-        S0=args.spot,
+        S0=spot,
         r=args.r,
         q=args.q,
         n_paths=max(400, args.n_paths // 2),
@@ -96,7 +102,7 @@ def main():
     payload = {
         "assumptions": {
             "model": args.model,
-            "spot": args.spot,
+            "spot": spot,
             "r": args.r,
             "q": args.q,
             "expiry_years": expiry_years,
@@ -105,6 +111,7 @@ def main():
             "seed": args.seed,
             "strategy": strategy.name,
             "legs": [leg.__dict__ for leg in strategy.legs],
+            "snapshot_file": args.snapshot_file,
         },
         "stress": {
             "spread_bps": args.spread_bps,

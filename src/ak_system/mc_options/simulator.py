@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .iv_dynamics import IVDynamicsParams, evolve_iv_state, surface_iv
-from .models import GBMParams, JumpDiffusionParams, simulate_gbm_paths, simulate_jump_diffusion_paths
+from .models import GBMParams, HestonParams, JumpDiffusionParams, simulate_gbm_paths, simulate_heston_paths, simulate_jump_diffusion_paths
 from .pricer import bs_price
 from .strategy import ExitRules, StrategyDef, should_exit, strategy_mid_value
 
@@ -96,6 +96,15 @@ def simulate_strategy_paths(
     rng = np.random.default_rng(seed)
     if model == "gbm":
         paths = simulate_gbm_paths(S0, n_paths, n_steps, dt, GBMParams(mu=r - q, sigma=iv_params.iv_atm), seed=seed)
+    elif model == "heston":
+        paths, _var = simulate_heston_paths(
+            S0,
+            n_paths,
+            n_steps,
+            dt,
+            HestonParams(mu=r - q, v0=max(1e-8, iv_params.iv_atm**2), theta=max(1e-8, iv_params.iv_atm**2)),
+            seed=seed,
+        )
     else:
         paths = simulate_jump_diffusion_paths(
             S0,

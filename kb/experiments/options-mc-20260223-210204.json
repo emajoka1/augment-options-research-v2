@@ -1,0 +1,77 @@
+{
+  "assumptions": {
+    "model": "heston",
+    "spot": 689.81,
+    "r": 0.03,
+    "q": 0.0,
+    "expiry_years": 0.0136986301369863,
+    "n_paths": 600,
+    "dt": 0.0006849315068493151,
+    "seed": 42,
+    "strategy": "iron_fly",
+    "legs": [
+      {
+        "side": "short",
+        "option_type": "call",
+        "strike": 690,
+        "qty": 1
+      },
+      {
+        "side": "short",
+        "option_type": "put",
+        "strike": 690,
+        "qty": 1
+      },
+      {
+        "side": "long",
+        "option_type": "call",
+        "strike": 697,
+        "qty": 1
+      },
+      {
+        "side": "long",
+        "option_type": "put",
+        "strike": 683,
+        "qty": 1
+      }
+    ],
+    "snapshot_file": "experiments/chain_snapshot_example.json"
+  },
+  "stress": {
+    "spread_bps": 30.0,
+    "slippage_bps": 8.0,
+    "partial_fill_prob": 0.1
+  },
+  "metrics": {
+    "ev": 3.83011926410334,
+    "pop": 1.0,
+    "pot": 0.0,
+    "profit_factor": Infinity,
+    "avg_win": 3.83011926410334,
+    "avg_loss": 0.0,
+    "expectancy": 3.83011926410334,
+    "var95": 3.804118061972698,
+    "cvar95": 3.7778886256297843,
+    "tail_p1": 3.7488790067880653,
+    "min_pl": 3.6646705453461195,
+    "max_pl": 3.8600417024946783
+  },
+  "distribution_percentiles": {
+    "p1": 3.7488790067880653,
+    "p5": 3.804118061972698,
+    "p10": 3.8102657640547792,
+    "p25": 3.8218860929806215,
+    "p50": 3.8341641845808074,
+    "p75": 3.842194682154866,
+    "p90": 3.846967556241506,
+    "p95": 3.8492738675613203,
+    "p99": 3.851117544587683
+  },
+  "sensitivity": {
+    "wide_spread_slippage_ev": 3.7224243932107988,
+    "wide_spread_slippage_pop": 1.0,
+    "wide_spread_slippage_cvar95": 3.5614641075474376,
+    "ev_delta": -0.10769487089254115
+  },
+  "breakevens": []
+}

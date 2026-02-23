@@ -2,9 +2,10 @@ import math
 
 import numpy as np
 
+from ak_system.mc_options.calibration import parse_chain_snapshot
 from ak_system.mc_options.iv_dynamics import IVDynamicsParams, evolve_iv_state, fit_surface_from_snapshot, surface_iv
 from ak_system.mc_options.metrics import compute_metrics
-from ak_system.mc_options.models import GBMParams, simulate_gbm_paths
+from ak_system.mc_options.models import GBMParams, HestonParams, simulate_gbm_paths, simulate_heston_paths
 from ak_system.mc_options.pricer import bs_greeks, bs_price, put_call_parity_gap
 from ak_system.mc_options.strategy import ExitRules, make_iron_fly, make_long_straddle, max_profit_max_loss, strategy_mid_value
 from ak_system.mc_options.simulator import FrictionConfig, RepriceRequest, reprice_option_path, simulate_strategy_paths
@@ -122,3 +123,20 @@ def test_wider_spread_reduces_ev():
     m_tight = compute_metrics(pnl_tight)
     m_wide = compute_metrics(pnl_wide)
     assert m_wide.ev <= m_tight.ev
+
+
+def test_heston_paths_deterministic_and_positive():
+    p1, v1 = simulate_heston_paths(100, n_paths=4, n_steps=8, dt=1 / 252, params=HestonParams(), seed=9)
+    p2, v2 = simulate_heston_paths(100, n_paths=4, n_steps=8, dt=1 / 252, params=HestonParams(), seed=9)
+    assert np.allclose(p1, p2)
+    assert np.allclose(v1, v2)
+    assert np.all(p1 > 0)
+    assert np.all(v1 > 0)
+
+
+def test_parse_chain_snapshot_json(tmp_path):
+    f = tmp_path / "chain.json"
+    f.write_text('{"spot": 101.5, "chain": [{"strike": 100, "iv": 0.24}, {"strike": 102, "iv": 0.25}]}')
+    s = parse_chain_snapshot(f)
+    assert s.spot == 101.5
+    assert len(s.strikes) == 2 and len(s.ivs) == 2
