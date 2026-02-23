@@ -5,6 +5,7 @@ import numpy as np
 from ak_system.mc_options.iv_dynamics import IVDynamicsParams, evolve_iv_state, fit_surface_from_snapshot, surface_iv
 from ak_system.mc_options.models import GBMParams, simulate_gbm_paths
 from ak_system.mc_options.pricer import bs_greeks, bs_price, put_call_parity_gap
+from ak_system.mc_options.strategy import make_iron_fly, max_profit_max_loss, strategy_mid_value
 from ak_system.mc_options.simulator import RepriceRequest, reprice_option_path
 
 
@@ -53,3 +54,13 @@ def test_surface_fit_and_iv_bounds():
     state = evolve_iv_state(params, n_steps=10, dt=1 / 252, returns=rets, seed=1)
     iv = surface_iv(100, 100, 20 / 252, state, 5, params)
     assert params.iv_floor <= iv <= params.iv_cap
+
+
+def test_iron_fly_defined_risk_shape():
+    strat = make_iron_fly(center=100, wing=5, expiry_years=30 / 365, qty=1)
+    iv_map = {95: 0.25, 100: 0.25, 105: 0.25}
+    entry = strategy_mid_value(strat, S=100, r=0.02, q=0.0, tau=30 / 365, iv_by_strike=iv_map)
+    mx, mn = max_profit_max_loss(strat, np.linspace(70, 130, 121), r=0.02, q=0.0, iv_by_strike=iv_map, entry_value=entry)
+    assert mx > 0
+    assert mn < 0
+    assert abs(mn) < 10  # bounded by wing width in this simple setup
