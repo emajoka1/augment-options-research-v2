@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 
+from ak_system.mc_options.iv_dynamics import IVDynamicsParams, evolve_iv_state, fit_surface_from_snapshot, surface_iv
 from ak_system.mc_options.models import GBMParams, simulate_gbm_paths
 from ak_system.mc_options.pricer import bs_greeks, bs_price, put_call_parity_gap
 from ak_system.mc_options.simulator import RepriceRequest, reprice_option_path
@@ -40,3 +41,15 @@ def test_repricing_path_non_negative():
     req = RepriceRequest(strike=100, option_type="call", r=0.02, q=0.0, iv=0.2, expiry_years=20 / 252)
     px = reprice_option_path(path, req, dt=1 / 252)
     assert np.all(px >= 0)
+
+
+def test_surface_fit_and_iv_bounds():
+    spot = 100
+    strikes = np.array([90, 95, 100, 105, 110], dtype=float)
+    ivs = np.array([0.28, 0.26, 0.24, 0.25, 0.27], dtype=float)
+    fit = fit_surface_from_snapshot(spot, strikes, ivs)
+    params = IVDynamicsParams(iv_atm=fit["iv_atm"], skew=fit["skew"], curv=fit["curv"])
+    rets = np.zeros(10)
+    state = evolve_iv_state(params, n_steps=10, dt=1 / 252, returns=rets, seed=1)
+    iv = surface_iv(100, 100, 20 / 252, state, 5, params)
+    assert params.iv_floor <= iv <= params.iv_cap
