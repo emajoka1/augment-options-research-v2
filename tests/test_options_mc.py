@@ -1,6 +1,10 @@
 import math
 
+import numpy as np
+
+from ak_system.mc_options.models import GBMParams, simulate_gbm_paths
 from ak_system.mc_options.pricer import bs_greeks, bs_price, put_call_parity_gap
+from ak_system.mc_options.simulator import RepriceRequest, reprice_option_path
 
 
 def test_put_call_parity_holds():
@@ -22,3 +26,17 @@ def test_greeks_signs():
     assert g_put.delta < 0
     assert g_call.gamma > 0 and g_put.gamma > 0
     assert g_call.vega > 0 and g_put.vega > 0
+
+
+def test_gbm_deterministic_seed_shape():
+    paths = simulate_gbm_paths(100, n_paths=5, n_steps=10, dt=1 / 252, params=GBMParams(), seed=1)
+    assert paths.shape == (5, 11)
+    paths2 = simulate_gbm_paths(100, n_paths=5, n_steps=10, dt=1 / 252, params=GBMParams(), seed=1)
+    assert np.allclose(paths, paths2)
+
+
+def test_repricing_path_non_negative():
+    path = np.linspace(100, 102, 11)
+    req = RepriceRequest(strike=100, option_type="call", r=0.02, q=0.0, iv=0.2, expiry_years=20 / 252)
+    px = reprice_option_path(path, req, dt=1 / 252)
+    assert np.all(px >= 0)
