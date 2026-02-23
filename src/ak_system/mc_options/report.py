@@ -20,6 +20,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
     breakevens = payload.get("breakevens", [])
     edge = payload.get("edge_attribution", {})
     fh = payload.get("friction_hurdle", {})
+    ms = payload.get("multi_seed_confidence", {})
 
     legs_lines = []
     for leg in assumptions.get("legs", []):
@@ -51,6 +52,15 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - CVaR95: {metrics.get('cvar95'):.4f}
 - Profit factor: {metrics.get('profit_factor'):.3f}
 
+## Multi-seed Confidence (fairness)
+- batches × paths: {ms.get('n_batches')} × {ms.get('paths_per_batch')}
+- EV_mean: {ms.get('ev_mean')}
+- EV_std: {ms.get('ev_std')}
+- EV_5th_percentile: {ms.get('ev_5th_percentile')}
+- POP_mean: {ms.get('pop_mean')}
+- CVaR_mean: {ms.get('cvar_mean')}
+- CVaR_worst: {ms.get('cvar_worst')}
+
 ## Execution Drag
 - baseline spread bps: {stress.get('spread_bps')}
 - baseline slippage bps: {stress.get('slippage_bps')}
@@ -72,7 +82,9 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 ## Survival-first Gates (Regime-conditioned)
 - Dominant regime: **{gates.get('regime')}**
 - EV threshold (R): {gates.get('ev_threshold_R')} | pass={gates.get('ev_gate')}
+- EV_5th percentile gate (> +0.02R): {gates.get('ev_ci_gate')}
 - CVaR threshold (R): {gates.get('cvar_threshold_R')} | pass={gates.get('cvar_gate')}
+- CVaR worst-case gate: {gates.get('cvar_worst_gate')}
 - POP/PoT gate: {gates.get('pop_or_pot')}
 - Slippage sensitivity gate: {gates.get('slippage_sensitivity_ok')}
 - Stress EV not catastrophic: {gates.get('stress_ev_not_catastrophic')}

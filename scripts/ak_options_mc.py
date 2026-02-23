@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -115,6 +117,8 @@ def main():
     p.add_argument("--q", type=float, default=0.0)
     p.add_argument("--expiry-days", type=float, default=5)
     p.add_argument("--n-paths", type=int, default=5000)
+    p.add_argument("--n-batches", type=int, default=20)
+    p.add_argument("--paths-per-batch", type=int, default=2000)
     p.add_argument("--dt-days", type=float, default=0.25)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--model", choices=["gbm", "jump", "heston"], default="jump")
@@ -153,59 +157,97 @@ def main():
     comparison_mode = "paired"
     assert_paired_seed_policy(args.model, args.model, strategy, strategy)
 
-    # Layer 1: ideal mid-fill (no friction)
-    pnl_mid, pot_mid = simulate_strategy_paths(
-        strategy=strategy,
-        S0=spot,
-        r=args.r,
-        q=args.q,
-        n_paths=args.n_paths,
-        n_steps=n_steps,
-        dt=dt,
-        iv_params=ivp,
-        exit_rules=exits,
-        friction=FrictionConfig(spread_bps=0.0, slippage_bps=0.0, partial_fill_prob=0.0),
-        model=args.model,
-        seed=base_seed,
-        event_risk_high=args.event_risk_high,
-    )
-    m_mid = compute_metrics(pnl_mid, pot_mid)
+    n_batches = max(1, args.n_batches)
+    n_paths_batch = max(100, args.paths_per_batch)
 
-    # Layer 2: realistic friction baseline
-    pnl, pot_flags = simulate_strategy_paths(
-        strategy=strategy,
-        S0=spot,
-        r=args.r,
-        q=args.q,
-        n_paths=args.n_paths,
-        n_steps=n_steps,
-        dt=dt,
-        iv_params=ivp,
-        exit_rules=exits,
-        friction=friction,
-        model=args.model,
-        seed=base_seed,
-        event_risk_high=args.event_risk_high,
-    )
-    metrics = compute_metrics(pnl, pot_flags)
+    mid_batch = []
+    real_batch = []
+    stress_batch = []
 
-    # Layer 3: bad-day friction stress
-    pnl_wide, pot_wide = simulate_strategy_paths(
-        strategy=strategy,
-        S0=spot,
-        r=args.r,
-        q=args.q,
-        n_paths=max(1000, args.n_paths // 2),
-        n_steps=n_steps,
-        dt=dt,
-        iv_params=ivp,
-        exit_rules=exits,
-        friction=FrictionConfig(spread_bps=args.spread_bps * 1.8, slippage_bps=args.slippage_bps * 1.6, partial_fill_prob=min(0.6, args.partial_fill_prob * 1.5)),
-        model=args.model,
-        seed=base_seed,
-        event_risk_high=args.event_risk_high,
-    )
-    m_wide = compute_metrics(pnl_wide, pot_wide)
+    for b in range(n_batches):
+        seed_b = base_seed + b * 1009
+
+        # Layer 1: ideal mid-fill (no friction)
+        pnl_mid, pot_mid = simulate_strategy_paths(
+            strategy=strategy,
+            S0=spot,
+            r=args.r,
+            q=args.q,
+            n_paths=n_paths_batch,
+            n_steps=n_steps,
+            dt=dt,
+            iv_params=ivp,
+            exit_rules=exits,
+            friction=FrictionConfig(spread_bps=0.0, slippage_bps=0.0, partial_fill_prob=0.0),
+            model=args.model,
+            seed=seed_b,
+            event_risk_high=args.event_risk_high,
+        )
+        m_mid = compute_metrics(pnl_mid, pot_mid)
+
+        # Layer 2: realistic friction baseline
+        pnl_real, pot_real = simulate_strategy_paths(
+            strategy=strategy,
+            S0=spot,
+            r=args.r,
+            q=args.q,
+            n_paths=n_paths_batch,
+            n_steps=n_steps,
+            dt=dt,
+            iv_params=ivp,
+            exit_rules=exits,
+            friction=friction,
+            model=args.model,
+            seed=seed_b,
+            event_risk_high=args.event_risk_high,
+        )
+        m_real = compute_metrics(pnl_real, pot_real)
+
+        # Layer 3: bad-day friction stress
+        pnl_stress, pot_stress = simulate_strategy_paths(
+            strategy=strategy,
+            S0=spot,
+            r=args.r,
+            q=args.q,
+            n_paths=n_paths_batch,
+            n_steps=n_steps,
+            dt=dt,
+            iv_params=ivp,
+            exit_rules=exits,
+            friction=FrictionConfig(spread_bps=args.spread_bps * 1.8, slippage_bps=args.slippage_bps * 1.6, partial_fill_prob=min(0.6, args.partial_fill_prob * 1.5)),
+            model=args.model,
+            seed=seed_b,
+            event_risk_high=args.event_risk_high,
+        )
+        m_stress = compute_metrics(pnl_stress, pot_stress)
+
+        mid_batch.append(m_mid)
+        real_batch.append(m_real)
+        stress_batch.append(m_stress)
+
+    # Primary point estimate from realistic layer mean
+    ev_real_vals = np.array([m.ev for m in real_batch])
+    pop_real_vals = np.array([m.pop for m in real_batch])
+    cvar_real_vals = np.array([m.cvar95 for m in real_batch])
+
+    ev_mid_vals = np.array([m.ev for m in mid_batch])
+    ev_stress_vals = np.array([m.ev for m in stress_batch])
+    cvar_stress_vals = np.array([m.cvar95 for m in stress_batch])
+
+    metrics = real_batch[-1]
+    m_mid = mid_batch[-1]
+    m_wide = stress_batch[-1]
+
+    multi_seed = {
+        "n_batches": int(n_batches),
+        "paths_per_batch": int(n_paths_batch),
+        "ev_mean": float(np.mean(ev_real_vals)),
+        "ev_std": float(np.std(ev_real_vals)),
+        "ev_5th_percentile": float(np.percentile(ev_real_vals, 5)),
+        "pop_mean": float(np.mean(pop_real_vals)),
+        "cvar_mean": float(np.mean(cvar_real_vals)),
+        "cvar_worst": float(np.min(cvar_stress_vals)),
+    }
 
     entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
     breakevens = compute_breakevens(strategy, entry_proxy)
@@ -215,7 +257,7 @@ def main():
 
     R_unit = max(abs(metrics.min_pl), 1e-6)
     ev_r = metrics.ev / R_unit
-    cvar_r = metrics.cvar95 / R_unit
+    cvar_r = multi_seed["cvar_mean"] / R_unit
     is_short_premium = strategy.name in {"iron_fly", "iron_condor"}
 
     if dominant_regime == "trend|vol_expanding":
@@ -225,15 +267,21 @@ def main():
     else:
         ev_req, cvar_req = 0.07, -0.85
 
-    ev_mid_r = m_mid.ev / R_unit
-    ev_real_r = metrics.ev / R_unit
-    ev_stress_r = m_wide.ev / R_unit
+    ev_mid_mean = float(np.mean(ev_mid_vals))
+    ev_real_mean = float(np.mean(ev_real_vals))
+    ev_stress_mean = float(np.mean(ev_stress_vals))
+
+    ev_mid_r = ev_mid_mean / R_unit
+    ev_real_r = ev_real_mean / R_unit
+    ev_stress_r = ev_stress_mean / R_unit
+    ev_p5_r = multi_seed["ev_5th_percentile"] / R_unit
+
     friction_hurdle = {
-        "ev_mid": m_mid.ev,
-        "ev_real": metrics.ev,
-        "ev_stress": m_wide.ev,
-        "delta_ev_real": metrics.ev - m_mid.ev,
-        "delta_ev_stress": m_wide.ev - m_mid.ev,
+        "ev_mid": ev_mid_mean,
+        "ev_real": ev_real_mean,
+        "ev_stress": ev_stress_mean,
+        "delta_ev_real": ev_real_mean - ev_mid_mean,
+        "delta_ev_stress": ev_stress_mean - ev_mid_mean,
         "ev_mid_R": ev_mid_r,
         "ev_real_R": ev_real_r,
         "ev_stress_R": ev_stress_r,
@@ -244,9 +292,11 @@ def main():
         "ev_threshold_R": ev_req,
         "cvar_threshold_R": cvar_req,
         "ev_gate": ev_real_r > ev_req,
+        "ev_ci_gate": ev_p5_r > 0.02,
         "cvar_gate": cvar_r > cvar_req,
-        "pop_or_pot": (metrics.pop > 0.55) if is_short_premium else (metrics.pot > 0.45),
-        "slippage_sensitivity_ok": abs(m_wide.ev - metrics.ev) / R_unit < 0.35,
+        "cvar_worst_gate": (multi_seed["cvar_worst"] / R_unit) > cvar_req,
+        "pop_or_pot": (multi_seed["pop_mean"] > 0.55) if is_short_premium else (metrics.pot > 0.45),
+        "slippage_sensitivity_ok": abs(ev_stress_mean - ev_real_mean) / R_unit < 0.35,
         "stress_ev_not_catastrophic": ev_stress_r > -0.50,
     }
 
@@ -269,7 +319,9 @@ def main():
 
     gate["allow_trade"] = bool(
         gate["ev_gate"]
+        and gate["ev_ci_gate"]
         and gate["cvar_gate"]
+        and gate["cvar_worst_gate"]
         and gate["pop_or_pot"]
         and gate["slippage_sensitivity_ok"]
         and gate["stress_ev_not_catastrophic"]
@@ -284,6 +336,8 @@ def main():
             "q": args.q,
             "expiry_years": expiry_years,
             "n_paths": args.n_paths,
+            "n_batches": n_batches,
+            "paths_per_batch": n_paths_batch,
             "dt": dt,
             "seed": args.seed,
             "strategy": strategy.name,
@@ -314,12 +368,13 @@ def main():
             "partial_fill_prob": args.partial_fill_prob,
         },
         "metrics": metrics.__dict__,
-        "distribution_percentiles": percentiles(pnl),
+        "multi_seed_confidence": multi_seed,
+        "distribution_percentiles": percentiles(pnl_real),
         "sensitivity": {
-            "wide_spread_slippage_ev": m_wide.ev,
-            "wide_spread_slippage_pop": m_wide.pop,
-            "wide_spread_slippage_cvar95": m_wide.cvar95,
-            "ev_delta_real_to_stress": m_wide.ev - metrics.ev,
+            "wide_spread_slippage_ev": ev_stress_mean,
+            "wide_spread_slippage_pop": float(np.mean([m.pop for m in stress_batch])),
+            "wide_spread_slippage_cvar95": float(np.mean([m.cvar95 for m in stress_batch])),
+            "ev_delta_real_to_stress": ev_stress_mean - ev_real_mean,
         },
         "friction_hurdle": friction_hurdle,
         "breakevens": breakevens,
@@ -328,7 +383,21 @@ def main():
     }
 
     j, m = write_report_json_md(paths.kb_experiments, payload)
-    print(json.dumps({"json": str(j), "md": str(m), "ev": metrics.ev, "pop": metrics.pop, "pot": metrics.pot, "cvar95": metrics.cvar95, "allow_trade": gate["allow_trade"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "json": str(j),
+                "md": str(m),
+                "ev_mean": multi_seed["ev_mean"],
+                "ev_5th_percentile": multi_seed["ev_5th_percentile"],
+                "pop_mean": multi_seed["pop_mean"],
+                "cvar_mean": multi_seed["cvar_mean"],
+                "cvar_worst": multi_seed["cvar_worst"],
+                "allow_trade": gate["allow_trade"],
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
