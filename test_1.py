@@ -620,6 +620,20 @@ class IVCalculator(QMainWindow):
         var = max(1e-6, np.var([metrics["mean"], metrics["median"], metrics["VaR_alpha"], metrics["ES_alpha"]]))
         kelly = self.engine.kelly_size(edge, var, self.policy["fractional_kelly"])
 
+        # Tail-to-structure consistency: if ES tail is too large vs bounded structure max loss, reject.
+        mm = self.current_strategy.max_loss_max_profit(datetime.now()) if self.current_strategy else None
+        struct_max_loss = abs(float(mm.get("max_loss"))) if mm and mm.get("max_loss") is not None else None
+        es_abs = abs(float(metrics.get("ES_alpha", 0)))
+        tail_structure_gate_fail = False
+        tail_structure_line = ""
+        if struct_max_loss is not None and struct_max_loss > 0:
+            tail_ratio_vs_structure = es_abs / struct_max_loss
+            if tail_ratio_vs_structure > 1.5:
+                tail_structure_gate_fail = True
+            tail_structure_line = f"|ES(α)|/|MaxLoss|={tail_ratio_vs_structure:.2f} threshold<=1.50"
+        else:
+            tail_structure_line = "Tail/structure check unavailable (missing bounded max loss)"
+
         # machine-weighted score (required buckets)
         regime_fit = 25 if regime["recommended_structure"] in ("short_vol_defined_risk_only", "long_vol") else 12
         vol_edge = 25 if ((regime["vol_regime"] in ("RICH_VOL", "EXTREME_VOL") and edge > 0) or (regime["vol_regime"] == "LOW_VOL_UNDERPRICED" and edge < 0)) else 12
@@ -692,6 +706,10 @@ class IVCalculator(QMainWindow):
             structure_quality = max(0, structure_quality - (8 if pot_gate_fail else 0) - (6 if sd_gate_fail else 0) - (6 if credit_width_gate_fail else 0))
             exec_quality = max(0, exec_quality - (4 if pot_gate_fail else 0) - (3 if credit_width_gate_fail else 0))
 
+        if tail_structure_gate_fail:
+            structure_quality = max(0, structure_quality - 8)
+            exec_quality = max(0, exec_quality - 4)
+
         total_score = regime_fit + vol_edge + structure_quality + event_timing + exec_quality
 
         decision = "PASS"
@@ -710,6 +728,8 @@ class IVCalculator(QMainWindow):
             gates.append("short_strike_inside_0.75SD")
         if credit_width_gate_fail:
             gates.append("credit_below_20pct_width")
+        if tail_structure_gate_fail:
+            gates.append("ES_exceeds_1.5x_max_loss")
         if not gates:
             decision = "TRADE"
 
@@ -724,6 +744,7 @@ class IVCalculator(QMainWindow):
             f"Score Breakdown => Regime:{regime_fit}/25 Vol:{vol_edge}/25 Structure:{structure_quality}/20 Event:{event_timing}/15 Execution:{exec_quality}/15 Total:{total_score}/100\n"
             + ("PoT / SD Checks:\n- " + "\n- ".join(pot_lines) + "\n" if pot_lines else "")
             + (f"Credit/Width Check: {credit_width_line}\n" if credit_width_line else "")
+            + (f"Tail/Structure Check: {tail_structure_line}\n" if tail_structure_line else "")
             + f"Gate Failures: {', '.join(gates) if gates else 'none'}\n"
             + "Why this happened: Decision is metric-anchored (ProbProfit, VaR/ES, BE vs expected move, IV-RV, weighted score, PoT and SD distance gates)."
         )
