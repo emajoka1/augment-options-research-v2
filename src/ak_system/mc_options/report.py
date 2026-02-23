@@ -19,6 +19,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
     gates = payload.get("gates", {})
     breakevens = payload.get("breakevens", [])
     edge = payload.get("edge_attribution", {})
+    fh = payload.get("friction_hurdle", {})
 
     legs_lines = []
     for leg in assumptions.get("legs", []):
@@ -55,6 +56,13 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - baseline slippage bps: {stress.get('slippage_bps')}
 - partial fill prob: {stress.get('partial_fill_prob')}
 
+## Friction Hurdle Rate
+- EV_mid: {fh.get('ev_mid')}
+- EV_real: {fh.get('ev_real')}
+- EV_stress: {fh.get('ev_stress')}
+- ΔEV_real (real-mid): {fh.get('delta_ev_real')}
+- ΔEV_stress (stress-mid): {fh.get('delta_ev_stress')}
+
 ## Edge Attribution (required)
 - IV rich vs RV: {edge.get('iv_rich_vs_rv')}
 - Mean-revert regime probability: {edge.get('mean_reversion_regime_probability')}
@@ -67,6 +75,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - CVaR threshold (R): {gates.get('cvar_threshold_R')} | pass={gates.get('cvar_gate')}
 - POP/PoT gate: {gates.get('pop_or_pot')}
 - Slippage sensitivity gate: {gates.get('slippage_sensitivity_ok')}
+- Stress EV not catastrophic: {gates.get('stress_ev_not_catastrophic')}
 - ALLOW TRADE: **{gates.get('allow_trade')}**
 """
     m.write_text(md, encoding="utf-8")

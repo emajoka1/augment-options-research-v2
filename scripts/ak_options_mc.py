@@ -150,6 +150,28 @@ def main():
     friction = FrictionConfig(spread_bps=args.spread_bps, slippage_bps=args.slippage_bps, partial_fill_prob=args.partial_fill_prob)
 
     base_seed = args.seed
+    comparison_mode = "paired"
+    assert_paired_seed_policy(args.model, args.model, strategy, strategy)
+
+    # Layer 1: ideal mid-fill (no friction)
+    pnl_mid, pot_mid = simulate_strategy_paths(
+        strategy=strategy,
+        S0=spot,
+        r=args.r,
+        q=args.q,
+        n_paths=args.n_paths,
+        n_steps=n_steps,
+        dt=dt,
+        iv_params=ivp,
+        exit_rules=exits,
+        friction=FrictionConfig(spread_bps=0.0, slippage_bps=0.0, partial_fill_prob=0.0),
+        model=args.model,
+        seed=base_seed,
+        event_risk_high=args.event_risk_high,
+    )
+    m_mid = compute_metrics(pnl_mid, pot_mid)
+
+    # Layer 2: realistic friction baseline
     pnl, pot_flags = simulate_strategy_paths(
         strategy=strategy,
         S0=spot,
@@ -167,11 +189,8 @@ def main():
     )
     metrics = compute_metrics(pnl, pot_flags)
 
-    # CRN only for same-model/same-structure friction sensitivity
-    comparison_mode = "paired"
-    assert_paired_seed_policy(args.model, args.model, strategy, strategy)
-
-    pnl_wide, _ = simulate_strategy_paths(
+    # Layer 3: bad-day friction stress
+    pnl_wide, pot_wide = simulate_strategy_paths(
         strategy=strategy,
         S0=spot,
         r=args.r,
@@ -186,7 +205,7 @@ def main():
         seed=base_seed,
         event_risk_high=args.event_risk_high,
     )
-    m_wide = compute_metrics(pnl_wide)
+    m_wide = compute_metrics(pnl_wide, pot_wide)
 
     entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
     breakevens = compute_breakevens(strategy, entry_proxy)
@@ -206,14 +225,29 @@ def main():
     else:
         ev_req, cvar_req = 0.07, -0.85
 
+    ev_mid_r = m_mid.ev / R_unit
+    ev_real_r = metrics.ev / R_unit
+    ev_stress_r = m_wide.ev / R_unit
+    friction_hurdle = {
+        "ev_mid": m_mid.ev,
+        "ev_real": metrics.ev,
+        "ev_stress": m_wide.ev,
+        "delta_ev_real": metrics.ev - m_mid.ev,
+        "delta_ev_stress": m_wide.ev - m_mid.ev,
+        "ev_mid_R": ev_mid_r,
+        "ev_real_R": ev_real_r,
+        "ev_stress_R": ev_stress_r,
+    }
+
     gate = {
         "regime": dominant_regime,
         "ev_threshold_R": ev_req,
         "cvar_threshold_R": cvar_req,
-        "ev_gate": ev_r > ev_req,
+        "ev_gate": ev_real_r > ev_req,
         "cvar_gate": cvar_r > cvar_req,
         "pop_or_pot": (metrics.pop > 0.55) if is_short_premium else (metrics.pot > 0.45),
         "slippage_sensitivity_ok": abs(m_wide.ev - metrics.ev) / R_unit < 0.35,
+        "stress_ev_not_catastrophic": ev_stress_r > -0.50,
     }
 
     # edge attribution (required for ALLOW)
@@ -233,7 +267,14 @@ def main():
         "explainable": bool(iv_rv_gap is not None and regime_prob > 0 and structure_match > 0),
     }
 
-    gate["allow_trade"] = bool(gate["ev_gate"] and gate["cvar_gate"] and gate["pop_or_pot"] and gate["slippage_sensitivity_ok"] and attribution["explainable"])
+    gate["allow_trade"] = bool(
+        gate["ev_gate"]
+        and gate["cvar_gate"]
+        and gate["pop_or_pot"]
+        and gate["slippage_sensitivity_ok"]
+        and gate["stress_ev_not_catastrophic"]
+        and attribution["explainable"]
+    )
 
     payload = {
         "assumptions": {
@@ -278,8 +319,9 @@ def main():
             "wide_spread_slippage_ev": m_wide.ev,
             "wide_spread_slippage_pop": m_wide.pop,
             "wide_spread_slippage_cvar95": m_wide.cvar95,
-            "ev_delta": m_wide.ev - metrics.ev,
+            "ev_delta_real_to_stress": m_wide.ev - metrics.ev,
         },
+        "friction_hurdle": friction_hurdle,
         "breakevens": breakevens,
         "edge_attribution": attribution,
         "gates": gate,
