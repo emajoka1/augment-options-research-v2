@@ -18,6 +18,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
     stress = payload.get("stress", {})
     gates = payload.get("gates", {})
     breakevens = payload.get("breakevens", [])
+    edge = payload.get("edge_attribution", {})
 
     legs_lines = []
     for leg in assumptions.get("legs", []):
@@ -53,6 +54,12 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - baseline spread bps: {stress.get('spread_bps')}
 - baseline slippage bps: {stress.get('slippage_bps')}
 - partial fill prob: {stress.get('partial_fill_prob')}
+
+## Edge Attribution (required)
+- IV rich vs RV: {edge.get('iv_rich_vs_rv')}
+- Mean-revert regime probability: {edge.get('mean_reversion_regime_probability')}
+- Structure/expected-move match: {edge.get('structure_expected_move_match')}
+- Explainable edge: {edge.get('explainable')}
 
 ## Survival-first Gates (Regime-conditioned)
 - Dominant regime: **{gates.get('regime')}**

@@ -7,7 +7,7 @@ import numpy as np
 from .iv_dynamics import IVDynamicsParams, evolve_iv_state, surface_iv
 from .models import GBMParams, HestonParams, JumpDiffusionParams, simulate_gbm_paths, simulate_heston_paths, simulate_jump_diffusion_paths
 from .pricer import bs_price
-from .strategy import ExitRules, StrategyDef, should_exit, strategy_mid_value
+from .strategy import ExitRules, Leg, StrategyDef, should_exit, strategy_mid_value
 
 
 @dataclass
@@ -92,6 +92,7 @@ def simulate_strategy_paths(
     friction: FrictionConfig,
     model: str = "jump",
     seed: int = 42,
+    event_risk_high: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     heston_var = None
@@ -130,8 +131,9 @@ def simulate_strategy_paths(
             iv_state["iv_atm"] = np.clip(np.sqrt(np.maximum(heston_var[i], 1e-12)), iv_params.iv_floor, iv_params.iv_cap)
 
         tau0 = strategy.expiry_years
-        iv_map0 = {leg.strike: surface_iv(path[0], leg.strike, tau0, iv_state, 0, iv_params) for leg in strategy.legs}
-        entry_mid = strategy_mid_value(strategy, path[0], r, q, tau0, iv_map0)
+        tau_by_leg0 = {idx: max((leg.expiry_years if leg.expiry_years is not None else strategy.expiry_years), 1e-6) for idx, leg in enumerate(strategy.legs)}
+        iv_map0 = {leg.strike: surface_iv(path[0], leg.strike, tau_by_leg0[idx], iv_state, 0, iv_params) for idx, leg in enumerate(strategy.legs)}
+        entry_mid = strategy_mid_value(strategy, path[0], r, q, tau0, iv_map0, tau_by_leg=tau_by_leg0)
 
         # Convert strategy value to executed entry cost with leg-level friction.
         entry_cost = 0.0
@@ -152,8 +154,12 @@ def simulate_strategy_paths(
 
         for t in range(1, n_steps + 1):
             tau = max(strategy.expiry_years - t * dt, 1e-6)
-            iv_map = {leg.strike: surface_iv(path[t], leg.strike, tau, iv_state, t, iv_params) for leg in strategy.legs}
-            val = strategy_mid_value(strategy, path[t], r, q, tau, iv_map)
+            tau_by_leg = {
+                idx: max((leg.expiry_years if leg.expiry_years is not None else strategy.expiry_years) - t * dt, 1e-6)
+                for idx, leg in enumerate(strategy.legs)
+            }
+            iv_map = {leg.strike: surface_iv(path[t], leg.strike, tau_by_leg[idx], iv_state, t, iv_params) for idx, leg in enumerate(strategy.legs)}
+            val = strategy_mid_value(strategy, path[t], r, q, tau, iv_map, tau_by_leg=tau_by_leg)
             path_pnl = val - entry_cost
             iv_shift = iv_state["iv_atm"][t] - iv_state["iv_atm"][0]
             dte_days = tau * 365
@@ -161,7 +167,15 @@ def simulate_strategy_paths(
             if tp_target is not None and path_pnl >= tp_target and pot_flags[i] == 0:
                 pot_flags[i] = 1
 
-            if should_exit(path_pnl, entry_abs, dte_days, iv_shift, exit_rules, is_short_premium=(entry_cost < 0)):
+            if should_exit(
+                path_pnl,
+                entry_abs,
+                dte_days,
+                iv_shift,
+                exit_rules,
+                is_short_premium=(entry_cost < 0),
+                event_risk_high=event_risk_high,
+            ):
                 final_val = val
                 break
             final_val = val

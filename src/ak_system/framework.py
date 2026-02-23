@@ -218,12 +218,77 @@ def load_baseline_weights(paths: Paths) -> Dict[str, float]:
     return {k: float(raw.get(k, 0.0)) / total for k in COMPONENTS}
 
 
+def walk_forward_validate(
+    samples: List[Sample],
+    baseline_w: Dict[str, float],
+    window_size: int = 360,
+    step_size: int = 120,
+    max_weight_drift: float = 0.10,
+) -> Dict[str, object]:
+    """Rolling OOS validation with stability constraints and degradation guard."""
+    windows = []
+    prev_w = baseline_w.copy()
+
+    for start in range(0, max(1, len(samples) - window_size), step_size):
+        end = min(len(samples), start + window_size)
+        block = samples[start:end]
+        if len(block) < max(60, step_size):
+            continue
+
+        split = int(0.7 * len(block))
+        train = block[:split]
+        test = block[split:]
+
+        raw_w = recalibrate_weights(train)
+        # stability clamp: max drift per cycle
+        clamped = {}
+        for k in COMPONENTS:
+            lo = max(0.0, prev_w[k] - max_weight_drift)
+            hi = min(1.0, prev_w[k] + max_weight_drift)
+            clamped[k] = float(np.clip(raw_w[k], lo, hi))
+        total = sum(clamped.values()) or 1.0
+        clamped = {k: v / total for k, v in clamped.items()}
+
+        b = evaluate_policy(test, baseline_w)
+        c = evaluate_policy(test, clamped)
+        stable = baseline_comparator(b, c) >= 0
+
+        # degrade weights back toward baseline when unstable
+        final_w = clamped
+        if not stable:
+            final_w = {k: 0.7 * baseline_w[k] + 0.3 * clamped[k] for k in COMPONENTS}
+            total2 = sum(final_w.values()) or 1.0
+            final_w = {k: v / total2 for k, v in final_w.items()}
+
+        windows.append(
+            {
+                "start": start,
+                "end": end,
+                "stable": stable,
+                "baseline_avg_r": b.avg_r,
+                "candidate_avg_r": c.avg_r,
+                "weights": final_w,
+            }
+        )
+        prev_w = final_w
+
+    if windows:
+        final = windows[-1]["weights"]
+        stability_ratio = sum(1 for w in windows if w["stable"]) / len(windows)
+    else:
+        final = baseline_w
+        stability_ratio = 0.0
+
+    return {"windows": windows, "final_weights": final, "stability_ratio": stability_ratio}
+
+
 def run_full_framework(paths: Paths, n_paths: int = 600, seed: int = 42) -> Dict[str, object]:
     samples = generate_samples(n_paths=n_paths, seed=seed)
     train, test = split_oos(samples, test_ratio=0.3, seed=seed + 1)
 
     baseline_w = load_baseline_weights(paths)
-    recal_w = recalibrate_weights(train)
+    wf = walk_forward_validate(samples, baseline_w)
+    recal_w = wf["final_weights"]
 
     baseline_metrics = evaluate_policy(test, baseline_w)
     candidate_metrics = evaluate_policy(test, recal_w)
@@ -249,6 +314,7 @@ def run_full_framework(paths: Paths, n_paths: int = 600, seed: int = 42) -> Dict
         "test_size": len(test),
         "baseline_weights": baseline_w,
         "recalibrated_weights": recal_w,
+        "walk_forward": wf,
         "baseline_metrics": asdict(baseline_metrics),
         "candidate_metrics": asdict(candidate_metrics),
         "oos_delta": delta,

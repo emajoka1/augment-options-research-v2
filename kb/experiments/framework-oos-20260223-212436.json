@@ -1,0 +1,142 @@
+{
+  "generated_at": "2026-02-23T21:24:36.492805+00:00",
+  "framework": "Regime->Structure->Execution->Risk Monte Carlo OOS",
+  "n_samples": 900,
+  "train_size": 630,
+  "test_size": 270,
+  "baseline_weights": {
+    "Regime": 0.3,
+    "Vol": 0.2,
+    "Structure": 0.2,
+    "Event": 0.15,
+    "Execution": 0.15
+  },
+  "recalibrated_weights": {
+    "Regime": 0.24760163832828325,
+    "Vol": 0.2558142899262473,
+    "Structure": 0.25536608907094366,
+    "Event": 0.13621798267452592,
+    "Execution": 0.10500000000000001
+  },
+  "walk_forward": {
+    "windows": [
+      {
+        "start": 0,
+        "end": 360,
+        "stable": false,
+        "baseline_avg_r": -0.04259002007246336,
+        "candidate_avg_r": -0.06910229334410475,
+        "weights": {
+          "Regime": 0.29571428571428576,
+          "Vol": 0.18285714285714288,
+          "Structure": 0.18285714285714288,
+          "Event": 0.21214285714285716,
+          "Execution": 0.12642857142857145
+        }
+      },
+      {
+        "start": 120,
+        "end": 480,
+        "stable": true,
+        "baseline_avg_r": -0.0007280482604148615,
+        "candidate_avg_r": -0.0007280482604148615,
+        "weights": {
+          "Regime": 0.24934789868127563,
+          "Vol": 0.21373509320940834,
+          "Structure": 0.3603714156123546,
+          "Event": 0.1428745258867163,
+          "Execution": 0.03367106661024526
+        }
+      },
+      {
+        "start": 240,
+        "end": 600,
+        "stable": true,
+        "baseline_avg_r": 0.05409187463560211,
+        "candidate_avg_r": 0.05409187463560211,
+        "weights": {
+          "Regime": 0.19062165858233374,
+          "Vol": 0.4004388702561535,
+          "Structure": 0.3542161485863575,
+          "Event": 0.05472332257515536,
+          "Execution": 0.0
+        }
+      },
+      {
+        "start": 360,
+        "end": 720,
+        "stable": true,
+        "baseline_avg_r": 0.07728366321275842,
+        "candidate_avg_r": 0.3203322818829461,
+        "weights": {
+          "Regime": 0.08798974944316833,
+          "Vol": 0.47098582292683705,
+          "Structure": 0.4410244276299945,
+          "Event": 0.0,
+          "Execution": 0.0
+        }
+      },
+      {
+        "start": 480,
+        "end": 840,
+        "stable": false,
+        "baseline_avg_r": 0.27666866243758054,
+        "candidate_avg_r": 0.1716137124815309,
+        "weights": {
+          "Regime": 0.24760163832828325,
+          "Vol": 0.2558142899262473,
+          "Structure": 0.25536608907094366,
+          "Event": 0.13621798267452592,
+          "Execution": 0.10500000000000001
+        }
+      }
+    ],
+    "final_weights": {
+      "Regime": 0.24760163832828325,
+      "Vol": 0.2558142899262473,
+      "Structure": 0.25536608907094366,
+      "Event": 0.13621798267452592,
+      "Execution": 0.10500000000000001
+    },
+    "stability_ratio": 0.6
+  },
+  "baseline_metrics": {
+    "win_rate": 0.5777777777777777,
+    "avg_r": 0.1496293189477261,
+    "max_drawdown": 8.343629747183149,
+    "tail_loss": -1.3963125842784108,
+    "slippage_sensitivity": 0.3255804447494212,
+    "sample_size": 90
+  },
+  "candidate_metrics": {
+    "win_rate": 0.5777777777777777,
+    "avg_r": 0.14231534434430074,
+    "max_drawdown": 8.343629747183149,
+    "tail_loss": -1.4694523303126643,
+    "slippage_sensitivity": 0.32202749034477324,
+    "sample_size": 90
+  },
+  "oos_delta": -0.012444160115529575,
+  "regime_breakdown": {
+    "mean_revert|vol_contracting": {
+      "baseline_avg_r": 0.27553185371745315,
+      "candidate_avg_r": 0.2511535393682175,
+      "delta_avg_r": -0.024378314349235652
+    },
+    "mean_revert|vol_expanding": {
+      "baseline_avg_r": 0.3210575863482446,
+      "candidate_avg_r": 0.3210575863482446,
+      "delta_avg_r": 0.0
+    },
+    "trend|vol_contracting": {
+      "baseline_avg_r": 0.29717026534084195,
+      "candidate_avg_r": 0.29717026534084195,
+      "delta_avg_r": 0.0
+    },
+    "trend|vol_expanding": {
+      "baseline_avg_r": -0.19749554809895128,
+      "candidate_avg_r": -0.19749554809895128,
+      "delta_avg_r": 0.0
+    }
+  }
+}
