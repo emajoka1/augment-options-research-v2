@@ -109,6 +109,8 @@ def main():
     friction = FrictionConfig(spread_bps=args.spread_bps, slippage_bps=args.slippage_bps, partial_fill_prob=args.partial_fill_prob)
 
     # Common random numbers by reusing same seed in scenario comparisons.
+    base_seed = args.seed
+
     pnl, pot_flags = simulate_strategy_paths(
         strategy=strategy,
         S0=spot,
@@ -121,10 +123,15 @@ def main():
         exit_rules=exits,
         friction=friction,
         model=args.model,
-        seed=args.seed,
+        seed=base_seed,
     )
 
     metrics = compute_metrics(pnl, pot_flags)
+
+    # Randomness policy:
+    # - Use CRN only for same model + same structure + friction sensitivity comparison.
+    # - Use independent seeds for any cross-model or cross-structure comparison.
+    sensitivity_seed = base_seed  # intentional CRN for friction-only delta
 
     pnl_wide, _ = simulate_strategy_paths(
         strategy=strategy,
@@ -142,7 +149,7 @@ def main():
             partial_fill_prob=min(0.6, args.partial_fill_prob * 1.5),
         ),
         model=args.model,
-        seed=args.seed,  # CRN for better comparability
+        seed=sensitivity_seed,  # CRN for same-model/same-structure friction comparison
     )
     m_wide = compute_metrics(pnl_wide)
 
@@ -201,6 +208,12 @@ def main():
             "strategy": strategy.name,
             "legs": [leg.__dict__ for leg in strategy.legs],
             "snapshot_file": args.snapshot_file,
+        },
+        "randomness_policy": {
+            "base_seed": base_seed,
+            "sensitivity_seed": sensitivity_seed,
+            "crn_scope": "same_model_same_structure_friction_only",
+            "cross_model_or_cross_structure": "independent_seeds_required"
         },
         "calibration": {
             "iv_atm": ivp.iv_atm,
