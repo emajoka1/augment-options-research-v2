@@ -627,11 +627,14 @@ class IVCalculator(QMainWindow):
         event_timing = 15 if not self.chk_event.isChecked() else 8
         exec_quality = 15 if metrics["TailRatio"] > -2.0 else 7
 
-        # --- NEW: short-premium touch-risk gates ---
+        # --- NEW: short-premium touch-risk + credit-width gates ---
         short_legs = [l for l in self.current_strategy.legs if l.qty < 0]
+        long_legs = [l for l in self.current_strategy.legs if l.qty > 0]
         pot_lines = []
         pot_gate_fail = False
         sd_gate_fail = False
+        credit_width_gate_fail = False
+        credit_width_line = ""
         now = datetime.now()
         for leg in short_legs:
             try:
@@ -656,9 +659,38 @@ class IVCalculator(QMainWindow):
             except Exception:
                 pot_lines.append(f"{leg.symbol}: PoT/SD calc unavailable")
 
+        # credit/width quality gate for defined-risk short premium (condor/fly style)
+        if short_legs and long_legs:
+            short_calls = [l for l in short_legs if l.option_type.upper() == "C"]
+            short_puts = [l for l in short_legs if l.option_type.upper() == "P"]
+            long_calls = [l for l in long_legs if l.option_type.upper() == "C"]
+            long_puts = [l for l in long_legs if l.option_type.upper() == "P"]
+            if short_calls and short_puts and long_calls and long_puts:
+                try:
+                    sc = sorted(short_calls, key=lambda x: x.strike)[0]
+                    sp = sorted(short_puts, key=lambda x: x.strike)[-1]
+                    lc = sorted([x for x in long_calls if x.strike > sc.strike], key=lambda x: x.strike)
+                    lp = sorted([x for x in long_puts if x.strike < sp.strike], key=lambda x: x.strike, reverse=True)
+                    if lc and lp:
+                        width_call = lc[0].strike - sc.strike
+                        width_put = sp.strike - lp[0].strike
+                        width = min(width_call, width_put)
+                        credit = max(0.0, (sc.premium + sp.premium - lc[0].premium - lp[0].premium))
+                        ratio = (credit / width) if width > 0 else 0.0
+                        iv_rv = max(0.0, regime.get("iv_rv_ratio", 1.0))
+                        vol_pct_proxy = max(0.0, min(100.0, ((iv_rv - 0.7) / 0.9) * 100.0))
+                        # Rule: reject if credit < 20% width unless vol percentile > 80
+                        if ratio < 0.20 and vol_pct_proxy <= 80.0:
+                            credit_width_gate_fail = True
+                        credit_width_line = (
+                            f"Credit/Width={ratio:.1%} threshold>=20% unless vol_pct>80 (vol_pct_proxy={vol_pct_proxy:.1f})"
+                        )
+                except Exception:
+                    credit_width_line = "Credit/Width check unavailable"
+
         if short_legs:
-            structure_quality = max(0, structure_quality - (8 if pot_gate_fail else 0) - (6 if sd_gate_fail else 0))
-            exec_quality = max(0, exec_quality - (4 if pot_gate_fail else 0))
+            structure_quality = max(0, structure_quality - (8 if pot_gate_fail else 0) - (6 if sd_gate_fail else 0) - (6 if credit_width_gate_fail else 0))
+            exec_quality = max(0, exec_quality - (4 if pot_gate_fail else 0) - (3 if credit_width_gate_fail else 0))
 
         total_score = regime_fit + vol_edge + structure_quality + event_timing + exec_quality
 
@@ -676,6 +708,8 @@ class IVCalculator(QMainWindow):
             gates.append("PoT_above_40pct")
         if sd_gate_fail:
             gates.append("short_strike_inside_0.75SD")
+        if credit_width_gate_fail:
+            gates.append("credit_below_20pct_width")
         if not gates:
             decision = "TRADE"
 
@@ -689,6 +723,7 @@ class IVCalculator(QMainWindow):
             f"Volatility Classifier: {regime['vol_regime']} ({regime['why']})\n"
             f"Score Breakdown => Regime:{regime_fit}/25 Vol:{vol_edge}/25 Structure:{structure_quality}/20 Event:{event_timing}/15 Execution:{exec_quality}/15 Total:{total_score}/100\n"
             + ("PoT / SD Checks:\n- " + "\n- ".join(pot_lines) + "\n" if pot_lines else "")
+            + (f"Credit/Width Check: {credit_width_line}\n" if credit_width_line else "")
             + f"Gate Failures: {', '.join(gates) if gates else 'none'}\n"
             + "Why this happened: Decision is metric-anchored (ProbProfit, VaR/ES, BE vs expected move, IV-RV, weighted score, PoT and SD distance gates)."
         )
