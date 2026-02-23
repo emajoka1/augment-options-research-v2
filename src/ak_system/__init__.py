@@ -9,4 +9,5 @@ __all__ = [
     "promotion",
     "regime",
     "montecarlo",
+    "framework",
 ]

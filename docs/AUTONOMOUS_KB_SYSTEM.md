@@ -54,9 +54,12 @@ From workspace root:
 PYTHONPATH=src python3 scripts/ak_scheduler.py --mode once
 PYTHONPATH=src python3 scripts/ak_scheduler.py --mode daemon
 PYTHONPATH=src python3 scripts/ak_regime_harness.py --paths 500
+PYTHONPATH=src python3 scripts/ak_framework.py --paths 600 --seed 42
 ```
 
 The regime harness writes JSON + markdown reports to `kb/experiments/` and auto-creates a proposal in `proposals/` when improvements are detected.
+
+The full framework run performs out-of-sample validation and automated scorecard weight recalibration (proposal-only; no direct production mutation).
 
 ## Approval flow
 

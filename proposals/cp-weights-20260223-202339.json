@@ -1,0 +1,41 @@
+{
+  "proposal_id": "cp-weights-20260223-202339",
+  "created_at": "2026-02-23T20:23:39.719608+00:00",
+  "author_mode": "RESEARCH_AGENT",
+  "title": "Recalibrate scorecard component weights from OOS framework",
+  "summary": "Automated recalibration improved OOS composite metrics vs baseline.",
+  "target_files": [
+    "kb/rules/scorecard_rules.json"
+  ],
+  "baseline_metrics": {
+    "win_rate": 0.8,
+    "avg_r": 0.37357499145416123,
+    "max_drawdown": 0.9506368499150568,
+    "tail_loss": -0.27298439110690964,
+    "slippage_sensitivity": 32.75026717507637,
+    "sample_size": 150
+  },
+  "candidate_metrics": {
+    "win_rate": 0.84,
+    "avg_r": 0.4399551314156585,
+    "max_drawdown": 0.4730647733740341,
+    "tail_loss": -0.18843037037020788,
+    "slippage_sensitivity": 32.97914013607158,
+    "sample_size": 150
+  },
+  "monte_carlo": {
+    "scenarios": [
+      "vol_expansion",
+      "gap_down",
+      "gap_up"
+    ],
+    "p5_return": -1.0,
+    "p50_return": 0.5,
+    "p95_return": 1.8
+  },
+  "out_of_sample_delta": 0.11390525730956297,
+  "tests_passed": true,
+  "rollback_plan": "Reject proposal or rollback approved decision snapshot.",
+  "approval_required": true,
+  "status": "PENDING"
+}
