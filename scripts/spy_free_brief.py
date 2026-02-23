@@ -246,6 +246,60 @@ def regime_snapshot(spot):
     }
 
 
+def _clip(x, lo=0.0, hi=1.0):
+    return max(lo, min(hi, x))
+
+
+def classify_vol_regime(current_iv, rv10, rv20, term_front_back, skew_put_call):
+    base_rv = rv20 or rv10
+    if current_iv is None or base_rv is None:
+        return {
+            "regime": "UNCLEAR",
+            "ivRvRatio": None,
+            "termState": "unknown",
+            "skewState": "unknown",
+            "explanation": "Missing IV or RV metrics"
+        }
+
+    iv_rv_ratio = current_iv / base_rv if base_rv > 0 else None
+    if iv_rv_ratio is None:
+        regime = "UNCLEAR"
+    elif iv_rv_ratio < 0.90:
+        regime = "LOW_VOL_UNDERPRICED"
+    elif iv_rv_ratio <= 1.10:
+        regime = "FAIR_VOL"
+    elif iv_rv_ratio <= 1.35:
+        regime = "RICH_VOL"
+    else:
+        regime = "EXTREME_VOL"
+
+    if term_front_back is None:
+        term_state = "unknown"
+    elif term_front_back > 0.02:
+        term_state = "backwardation_risk"
+    elif term_front_back < -0.02:
+        term_state = "contango_normal"
+    else:
+        term_state = "flat"
+
+    if skew_put_call is None:
+        skew_state = "unknown"
+    elif skew_put_call > 0.02:
+        skew_state = "put_skew_elevated"
+    elif skew_put_call < -0.01:
+        skew_state = "call_skew_elevated"
+    else:
+        skew_state = "balanced"
+
+    return {
+        "regime": regime,
+        "ivRvRatio": iv_rv_ratio,
+        "termState": term_state,
+        "skewState": skew_state,
+        "explanation": f"iv/base_rv={round(iv_rv_ratio,3)}"
+    }
+
+
 def vol_state(rows, rv10, rv20):
     ivs = [float(r["iv"]) for r in rows if r.get("iv") is not None]
     current_iv = sum(ivs[:6]) / len(ivs[:6]) if len(ivs) >= 6 else (sum(ivs) / len(ivs) if ivs else None)
@@ -260,70 +314,72 @@ def vol_state(rows, rv10, rv20):
     put_iv = sum(float(r["iv"]) for r in near_put) / len(near_put) if near_put else None
     call_iv = sum(float(r["iv"]) for r in near_call) / len(near_call) if near_call else None
     skew = (put_iv - call_iv) if put_iv is not None and call_iv is not None else None
+    term = (near_iv - back_iv) if (near_iv is not None and back_iv is not None) else None
 
-    if current_iv is None:
-        vol_label = "unknown"
-    else:
-        base_rv = rv20 or rv10
-        if base_rv is None:
-            vol_label = "unknown"
-        elif current_iv < base_rv * 0.95:
-            vol_label = "cheap"
-        elif current_iv > base_rv * 1.05:
-            vol_label = "expensive"
-        else:
-            vol_label = "fair"
+    classifier = classify_vol_regime(current_iv, rv10, rv20, term, skew)
+    vol_label = {
+        "LOW_VOL_UNDERPRICED": "cheap",
+        "FAIR_VOL": "fair",
+        "RICH_VOL": "expensive",
+        "EXTREME_VOL": "expensive",
+    }.get(classifier["regime"], "unknown")
 
     return {
         "ivCurrent": current_iv,
         "ivRankProxy": None,
         "ivVsRv10": (current_iv - rv10) if (current_iv and rv10) else None,
         "ivVsRv20": (current_iv - rv20) if (current_iv and rv20) else None,
-        "termStructureFrontBack": (near_iv - back_iv) if (near_iv and back_iv) else None,
+        "termStructureFrontBack": term,
         "skewPutMinusCall": skew,
         "volLabel": vol_label,
         "expansionRisk": "high" if current_iv and rv20 and current_iv < rv20 else "low_or_moderate",
         "contractionRisk": "high" if current_iv and rv20 and current_iv > rv20 else "low_or_moderate",
+        "classifier": classifier,
     }
 
 
 def score_components(candidate, context, vol, exec_ok, event_ok):
-    # A) Regime Fit 25
-    regime_fit = 0
+    # Machine-weighted scoring with normalized factors, then mapped to required caps.
     risk_state = context["regime"]["riskState"]
+    vol_regime = (vol.get("classifier") or {}).get("regime")
+    iv_rv = (vol.get("classifier") or {}).get("ivRvRatio")
+
+    # A) Regime Fit (25)
+    regime_match = 0.0
     if candidate["type"] in ("debit", "credit") and risk_state == "Risk-on":
-        regime_fit = 22
+        regime_match = 1.0
     elif candidate["type"] == "condor" and risk_state == "Neutral":
-        regime_fit = 22
+        regime_match = 1.0
+    elif risk_state == "Risk-off":
+        regime_match = 0.3
     else:
-        regime_fit = 12
+        regime_match = 0.6
+    regime_fit = int(round(25 * regime_match))
 
-    # B) Volatility Edge 25
-    vol_edge = 0
-    label = vol["volLabel"]
-    if label == "cheap" and candidate["type"] == "debit":
-        vol_edge = 23
-    elif label == "expensive" and candidate["type"] in ("credit", "condor"):
-        vol_edge = 23
-    elif label == "fair":
-        vol_edge = 14
-    else:
-        vol_edge = 8
+    # B) Volatility Edge (25)
+    vol_edge_norm = 0.3
+    if vol_regime == "LOW_VOL_UNDERPRICED" and candidate["type"] == "debit":
+        vol_edge_norm = 0.95
+    elif vol_regime in ("RICH_VOL", "EXTREME_VOL") and candidate["type"] in ("credit", "condor"):
+        vol_edge_norm = 0.95
+    elif vol_regime == "FAIR_VOL":
+        vol_edge_norm = 0.55
+    if iv_rv is not None:
+        vol_edge_norm = _clip(vol_edge_norm * (1.0 if 0.75 <= iv_rv <= 1.6 else 0.8))
+    vol_edge = int(round(25 * vol_edge_norm))
 
-    # C) Structure Quality 20
-    structure = 0
-    if candidate.get("maxLoss") and candidate.get("breakevens"):
-        structure = 16
-        if candidate["type"] == "condor":
-            structure = 14
-    else:
-        structure = 0
+    # C) Structure Quality (20)
+    has_defined = 1.0 if candidate.get("maxLoss") and candidate.get("breakevens") else 0.0
+    structure_norm = 0.2 + 0.8 * has_defined
+    if candidate["type"] == "condor":
+        structure_norm *= 0.9
+    structure = int(round(20 * _clip(structure_norm)))
 
-    # D) Event Timing 15
-    event = 12 if event_ok else 5
+    # D) Event Timing (15)
+    event = int(round(15 * (0.85 if event_ok else 0.35)))
 
-    # E) Execution Quality 15
-    execution = 13 if exec_ok else 4
+    # E) Execution Quality (15)
+    execution = int(round(15 * (0.9 if exec_ok else 0.25)))
 
     total = regime_fit + vol_edge + structure + event + execution
     return {
@@ -333,6 +389,15 @@ def score_components(candidate, context, vol, exec_ok, event_ok):
         "Event": event,
         "Execution": execution,
         "Total": total,
+        "machineFactors": {
+            "regimeMatch": round(regime_match, 3),
+            "volEdgeNorm": round(vol_edge_norm, 3),
+            "structureNorm": round(_clip(structure_norm), 3),
+            "eventNorm": 0.85 if event_ok else 0.35,
+            "executionNorm": 0.9 if exec_ok else 0.25,
+            "volRegime": vol_regime,
+            "ivRvRatio": round(iv_rv, 3) if iv_rv is not None else None,
+        }
     }
 
 
