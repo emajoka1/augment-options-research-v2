@@ -136,7 +136,19 @@ def test_heston_paths_deterministic_and_positive():
 
 def test_parse_chain_snapshot_json(tmp_path):
     f = tmp_path / "chain.json"
-    f.write_text('{"spot": 101.5, "chain": [{"strike": 100, "iv": 0.24}, {"strike": 102, "iv": 0.25}]}')
+    f.write_text('{"spot": 101.5, "chain": [{"strike": 100, "iv": 0.24, "expiry_days": 5}, {"strike": 102, "iv": 0.25, "expiry_days": 10}], "returns": [0.01, -0.02]}')
     s = parse_chain_snapshot(f)
     assert s.spot == 101.5
     assert len(s.strikes) == 2 and len(s.ivs) == 2
+    assert s.expiries_days is not None
+    assert s.returns is not None and len(s.returns) == 2
+
+
+def test_parse_chain_snapshot_csv(tmp_path):
+    f = tmp_path / "chain.csv"
+    f.write_text("# spot=100.0\n# returns=0.01;-0.02;0.005\nstrike,iv,expiry_days\n99,0.24,5\n101,0.25,10\n")
+    s = parse_chain_snapshot(f)
+    assert s.spot == 100.0
+    assert len(s.strikes) == 2
+    assert s.expiries_days is not None
+    assert s.returns is not None and len(s.returns) == 3

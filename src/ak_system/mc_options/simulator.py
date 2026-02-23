@@ -116,7 +116,7 @@ def simulate_strategy_paths(
         )
 
     pnl = np.zeros(n_paths)
-    touch = np.zeros(n_paths)
+    pot_flags = np.zeros(n_paths)
 
     for i in range(n_paths):
         path = paths[i]
@@ -138,9 +138,12 @@ def simulate_strategy_paths(
                 px = _exec_price(mid, "sell", friction, rng)
                 entry_cost -= px * leg.qty
 
-        closed = False
         final_val = entry_mid
         iv_shift = 0.0
+        entry_abs = max(abs(entry_cost), 1e-6)
+        tp_target = exit_rules.take_profit_pct * entry_abs if exit_rules.take_profit_pct is not None else None
+        sl_limit = -exit_rules.stop_loss_pct * entry_abs if exit_rules.stop_loss_pct is not None else None
+
         for t in range(1, n_steps + 1):
             tau = max(strategy.expiry_years - t * dt, 1e-6)
             iv_map = {leg.strike: surface_iv(path[t], leg.strike, tau, iv_state, t, iv_params) for leg in strategy.legs}
@@ -149,13 +152,11 @@ def simulate_strategy_paths(
             iv_shift = iv_state["iv_atm"][t] - iv_state["iv_atm"][0]
             dte_days = tau * 365
 
-            # crude PoT proxy: touched 1.5x risk from entry magnitude
-            if abs(path_pnl) >= 1.5 * max(abs(entry_cost), 1e-6):
-                touch[i] = 1
+            if tp_target is not None and path_pnl >= tp_target and pot_flags[i] == 0:
+                pot_flags[i] = 1
 
-            if should_exit(path_pnl, abs(entry_cost), dte_days, iv_shift, exit_rules, is_short_premium=(entry_cost < 0)):
+            if should_exit(path_pnl, entry_abs, dte_days, iv_shift, exit_rules, is_short_premium=(entry_cost < 0)):
                 final_val = val
-                closed = True
                 break
             final_val = val
 
@@ -176,4 +177,4 @@ def simulate_strategy_paths(
 
         pnl[i] = exit_val - entry_cost
 
-    return pnl, touch
+    return pnl, pot_flags

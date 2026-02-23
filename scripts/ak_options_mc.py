@@ -12,12 +12,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ak_system.config import build_paths, ensure_dirs
-from ak_system.mc_options.calibration import defaults_from_market, fit_iv_params_from_snapshot, parse_chain_snapshot
-from ak_system.mc_options.iv_dynamics import IVDynamicsParams
+from ak_system.mc_options.calibration import calibrate_from_snapshot, defaults_from_market, parse_chain_snapshot
 from ak_system.mc_options.metrics import compute_metrics, percentiles
 from ak_system.mc_options.report import write_report_json_md
 from ak_system.mc_options.simulator import FrictionConfig, simulate_strategy_paths
-from ak_system.mc_options.strategy import ExitRules, make_iron_fly, make_long_straddle
+from ak_system.mc_options.strategy import ExitRules, compute_breakevens, make_iron_fly, make_long_straddle
 
 
 def build_strategy(example: str, spot: float, expiry_years: float):
@@ -34,7 +33,7 @@ def main():
     p.add_argument("--r", type=float, default=0.03)
     p.add_argument("--q", type=float, default=0.0)
     p.add_argument("--expiry-days", type=float, default=5)
-    p.add_argument("--n-paths", type=int, default=1500)
+    p.add_argument("--n-paths", type=int, default=5000)
     p.add_argument("--dt-days", type=float, default=0.25)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--model", choices=["gbm", "jump", "heston"], default="jump")
@@ -54,18 +53,27 @@ def main():
     dt = expiry_years / n_steps
 
     spot = args.spot
+    rv10 = None
+    rv20 = None
+    jump_used = None
+
     if args.snapshot_file:
         snap = parse_chain_snapshot(args.snapshot_file)
+        cal = calibrate_from_snapshot(snap, dt=dt)
         spot = float(snap.spot)
-        ivp = fit_iv_params_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs)
+        ivp = cal.iv
+        rv10, rv20 = cal.rv10, cal.rv20
+        jump_used = cal.jump
     else:
-        _, _, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
+        _, jump_default, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
+        jump_used = jump_default
 
     strategy = build_strategy(args.example, spot, expiry_years)
     exits = ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25)
     friction = FrictionConfig(spread_bps=args.spread_bps, slippage_bps=args.slippage_bps, partial_fill_prob=args.partial_fill_prob)
 
-    pnl, touch = simulate_strategy_paths(
+    # Common random numbers by reusing same seed in scenario comparisons.
+    pnl, pot_flags = simulate_strategy_paths(
         strategy=strategy,
         S0=spot,
         r=args.r,
@@ -80,24 +88,45 @@ def main():
         seed=args.seed,
     )
 
-    metrics = compute_metrics(pnl, touch)
+    metrics = compute_metrics(pnl, pot_flags)
 
-    # sensitivity shocks
     pnl_wide, _ = simulate_strategy_paths(
         strategy=strategy,
         S0=spot,
         r=args.r,
         q=args.q,
-        n_paths=max(400, args.n_paths // 2),
+        n_paths=max(1000, args.n_paths // 2),
         n_steps=n_steps,
         dt=dt,
         iv_params=ivp,
         exit_rules=exits,
-        friction=FrictionConfig(spread_bps=args.spread_bps * 1.8, slippage_bps=args.slippage_bps * 1.6, partial_fill_prob=min(0.6, args.partial_fill_prob * 1.5)),
+        friction=FrictionConfig(
+            spread_bps=args.spread_bps * 1.8,
+            slippage_bps=args.slippage_bps * 1.6,
+            partial_fill_prob=min(0.6, args.partial_fill_prob * 1.5),
+        ),
         model=args.model,
-        seed=args.seed + 99,
+        seed=args.seed,  # CRN for better comparability
     )
     m_wide = compute_metrics(pnl_wide)
+
+    # Breakevens from structure formula using entry premium proxy (mean positive cost).
+    entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
+    breakevens = compute_breakevens(strategy, entry_proxy)
+
+    # survival-first gates in R-space
+    R_unit = max(abs(metrics.min_pl), 1e-6)
+    ev_r = metrics.ev / R_unit
+    cvar_r = metrics.cvar95 / R_unit
+    is_short_premium = strategy.name in {"iron_fly", "iron_condor"}
+
+    gate = {
+        "ev_gt_0.05R": ev_r > 0.05,
+        "cvar95_gt_-1R": cvar_r > -1.0,
+        "pop_or_pot": (metrics.pop > 0.55) if is_short_premium else (metrics.pot > 0.45),
+        "slippage_sensitivity_ok": abs(m_wide.ev - metrics.ev) / R_unit < 0.35,
+    }
+    gate["allow_trade"] = all(gate.values())
 
     payload = {
         "assumptions": {
@@ -113,6 +142,15 @@ def main():
             "legs": [leg.__dict__ for leg in strategy.legs],
             "snapshot_file": args.snapshot_file,
         },
+        "calibration": {
+            "iv_atm": ivp.iv_atm,
+            "skew": ivp.skew,
+            "curv": ivp.curv,
+            "term": ivp.term,
+            "rv10": rv10,
+            "rv20": rv20,
+            "jump": jump_used.__dict__ if jump_used else None,
+        },
         "stress": {
             "spread_bps": args.spread_bps,
             "slippage_bps": args.slippage_bps,
@@ -126,11 +164,25 @@ def main():
             "wide_spread_slippage_cvar95": m_wide.cvar95,
             "ev_delta": m_wide.ev - metrics.ev,
         },
-        "breakevens": [],
+        "breakevens": breakevens,
+        "gates": gate,
     }
 
     j, m = write_report_json_md(paths.kb_experiments, payload)
-    print(json.dumps({"json": str(j), "md": str(m), "ev": metrics.ev, "pop": metrics.pop, "cvar95": metrics.cvar95}, indent=2))
+    print(
+        json.dumps(
+            {
+                "json": str(j),
+                "md": str(m),
+                "ev": metrics.ev,
+                "pop": metrics.pop,
+                "pot": metrics.pot,
+                "cvar95": metrics.cvar95,
+                "allow_trade": gate["allow_trade"],
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

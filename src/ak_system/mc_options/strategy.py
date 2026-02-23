@@ -98,6 +98,36 @@ def max_profit_max_loss(strategy: StrategyDef, S_grid: np.ndarray, r: float, q: 
     return float(np.max(payoffs)), float(np.min(payoffs))
 
 
+def compute_breakevens(strategy: StrategyDef, entry_value: float) -> list[float]:
+    """Approximate breakevens from standard structure formulas.
+
+    entry_value: strategy mid at entry (positive=debit, negative=credit)
+    """
+    name = strategy.name
+    v = abs(entry_value)
+    if name == "long_straddle":
+        # K +/- (C+P)
+        k = strategy.legs[0].strike
+        return [float(k - v), float(k + v)]
+
+    if name == "iron_fly":
+        # short fly center +/- credit
+        center = [l.strike for l in strategy.legs if l.side == "short"]
+        if center:
+            k = float(center[0])
+            return [float(k - v), float(k + v)]
+
+    if name.endswith("_vertical"):
+        longs = [l for l in strategy.legs if l.side == "long"]
+        if longs:
+            l0 = longs[0]
+            if l0.option_type == "call":
+                return [float(l0.strike + v)]
+            return [float(l0.strike - v)]
+
+    return []
+
+
 def should_exit(current_pnl: float, entry_debit_or_credit: float, dte_days: float, iv_shift: float, rules: ExitRules, is_short_premium: bool) -> bool:
     # For short premium, take profit is % of credit captured (positive pnl).
     if rules.take_profit_pct is not None and entry_debit_or_credit > 0:

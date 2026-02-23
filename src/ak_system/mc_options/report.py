@@ -16,8 +16,20 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
     metrics = payload.get("metrics", {})
     assumptions = payload.get("assumptions", {})
     stress = payload.get("stress", {})
+    gates = payload.get("gates", {})
     breakevens = payload.get("breakevens", [])
+
+    legs_lines = []
+    for leg in assumptions.get("legs", []):
+        legs_lines.append(f"- {leg.get('side')} {leg.get('qty')} {leg.get('option_type').upper()} {leg.get('strike')}")
+    legs_txt = "\n".join(legs_lines) if legs_lines else "- N/A"
+
     md = f"""# Trade Brief — Options Monte Carlo
+
+## Strategy
+- Name: **{assumptions.get('strategy')}**
+- Legs:
+{legs_txt}
 
 ## Assumptions
 - Model: {assumptions.get('model')}
@@ -32,7 +44,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 ## Core Metrics (after costs)
 - EV: {metrics.get('ev'):.4f}
 - POP: {metrics.get('pop'):.3f}
-- PoT: {metrics.get('pot'):.3f}
+- PoT: {metrics.get('pot'):.3f} *(pathwise: P(P/L reaches profit target before stop/expiry))*
 - VaR95: {metrics.get('var95'):.4f}
 - CVaR95: {metrics.get('cvar95'):.4f}
 - Profit factor: {metrics.get('profit_factor'):.3f}
@@ -42,8 +54,12 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - baseline slippage bps: {stress.get('slippage_bps')}
 - partial fill prob: {stress.get('partial_fill_prob')}
 
-## Decision
-- Rule: TRADE only if EV>0 and CVaR within limits.
+## Survival-first Gates
+- EV > +0.05R: {gates.get('ev_gt_0.05R')}
+- CVaR95 > -1.0R: {gates.get('cvar95_gt_-1R')}
+- POP/PoT gate: {gates.get('pop_or_pot')}
+- Slippage sensitivity gate: {gates.get('slippage_sensitivity_ok')}
+- ALLOW TRADE: **{gates.get('allow_trade')}**
 """
     m.write_text(md, encoding="utf-8")
     return j, m
