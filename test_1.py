@@ -626,6 +626,40 @@ class IVCalculator(QMainWindow):
         structure_quality = 20 if np.isfinite(be_dist) else 8
         event_timing = 15 if not self.chk_event.isChecked() else 8
         exec_quality = 15 if metrics["TailRatio"] > -2.0 else 7
+
+        # --- NEW: short-premium touch-risk gates ---
+        short_legs = [l for l in self.current_strategy.legs if l.qty < 0]
+        pot_lines = []
+        pot_gate_fail = False
+        sd_gate_fail = False
+        now = datetime.now()
+        for leg in short_legs:
+            try:
+                T_leg = leg.T(now)
+                d2 = leg.d2(S0, now)
+                if leg.option_type.upper() == "C":
+                    p_itm_exp = _cdf(d2)   # call ITM at expiry
+                else:
+                    p_itm_exp = _cdf(-d2)  # put ITM at expiry
+                pot = min(1.0, 2.0 * max(0.0, p_itm_exp))
+                leg_em = S0 * max(1e-6, leg.iv) * math.sqrt(max(T_leg, 1e-8))
+                sd_dist = abs(leg.strike - S0) / max(1e-8, leg_em)
+
+                if pot > 0.40:
+                    pot_gate_fail = True
+                if sd_dist < 0.75:
+                    sd_gate_fail = True
+
+                pot_lines.append(
+                    f"{leg.symbol}: PoT={pot:.2%} (reject>40%), SD_dist={sd_dist:.2f} (min 0.75)"
+                )
+            except Exception:
+                pot_lines.append(f"{leg.symbol}: PoT/SD calc unavailable")
+
+        if short_legs:
+            structure_quality = max(0, structure_quality - (8 if pot_gate_fail else 0) - (6 if sd_gate_fail else 0))
+            exec_quality = max(0, exec_quality - (4 if pot_gate_fail else 0))
+
         total_score = regime_fit + vol_edge + structure_quality + event_timing + exec_quality
 
         decision = "PASS"
@@ -638,6 +672,10 @@ class IVCalculator(QMainWindow):
             gates.append("no_positive_edge")
         if max_risk <= 0:
             gates.append("SIZE_TOO_LARGE")
+        if pot_gate_fail:
+            gates.append("PoT_above_40pct")
+        if sd_gate_fail:
+            gates.append("short_strike_inside_0.75SD")
         if not gates:
             decision = "TRADE"
 
@@ -650,8 +688,9 @@ class IVCalculator(QMainWindow):
             "5) Do-not-do: no undefined-risk short premium.\n"
             f"Volatility Classifier: {regime['vol_regime']} ({regime['why']})\n"
             f"Score Breakdown => Regime:{regime_fit}/25 Vol:{vol_edge}/25 Structure:{structure_quality}/20 Event:{event_timing}/15 Execution:{exec_quality}/15 Total:{total_score}/100\n"
-            f"Gate Failures: {', '.join(gates) if gates else 'none'}\n"
-            "Why this happened: Decision is metric-anchored (ProbProfit, VaR/ES, BE vs expected move, IV-RV, weighted score)."
+            + ("PoT / SD Checks:\n- " + "\n- ".join(pot_lines) + "\n" if pot_lines else "")
+            + f"Gate Failures: {', '.join(gates) if gates else 'none'}\n"
+            + "Why this happened: Decision is metric-anchored (ProbProfit, VaR/ES, BE vs expected move, IV-RV, weighted score, PoT and SD distance gates)."
         )
 
     def generate_exit_plan(self):
