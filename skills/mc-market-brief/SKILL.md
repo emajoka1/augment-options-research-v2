@@ -48,6 +48,11 @@ Include:
 - 3 defined-risk structures (directional + hedge + neutral)
 - `missing_for_trade_ready` checklist
 
+## Automation Helpers
+
+- `python3 scripts/mc_notify_if_changed.py` for periodic checks that only notify on state changes.
+- `python3 scripts/mc_scorecard.py` for quick run-health summary.
+
 ## Guardrails
 
 - Treat `PARTIAL_DATA` as **research-only**.

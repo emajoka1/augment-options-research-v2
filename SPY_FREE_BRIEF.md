@@ -26,6 +26,28 @@ This wrapper:
 - classifies state as `NO_TRADE` / `WATCH` / `TRADE_READY`,
 - logs each run to `snapshots/mc_runs.jsonl`.
 
+## State-change alerting (for cron)
+
+Only emits when state changes (`action_state`, `data_status`, or `final_decision`):
+
+```bash
+python3 scripts/mc_notify_if_changed.py --max-attempts 2 --retry-delay-sec 180
+```
+
+Emit an OpenClaw wake event on changes:
+
+```bash
+python3 scripts/mc_notify_if_changed.py --notify
+```
+
+## Quick scorecard
+
+```bash
+python3 scripts/mc_scorecard.py
+```
+
+Shows run counts by action/data/decision and the last run snapshot.
+
 Optional env vars:
 
 - `SPY_CHAIN_PATH` (default: `~/lab/data/tastytrade/SPY_nested_chain.json`)
