@@ -14,6 +14,18 @@ This gives a **best-effort SPY options morning brief** using free/public sources
 python3 scripts/spy_free_brief.py
 ```
 
+## Unified MC command (recommended)
+
+```bash
+python3 scripts/mc_command.py --max-attempts 2 --retry-delay-sec 180
+```
+
+This wrapper:
+- runs the live snapshot collector + brief generator,
+- retries automatically when feed is `PARTIAL_DATA`,
+- classifies state as `NO_TRADE` / `WATCH` / `TRADE_READY`,
+- logs each run to `snapshots/mc_runs.jsonl`.
+
 Optional env vars:
 
 - `SPY_CHAIN_PATH` (default: `~/lab/data/tastytrade/SPY_nested_chain.json`)
