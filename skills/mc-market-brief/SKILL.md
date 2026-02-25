@@ -1,6 +1,6 @@
 ---
 name: mc-market-brief
-description: Generate and relay SPY market context (MC) briefs from local cron/snapshot pipelines, including data-quality state (OK/PARTIAL_DATA), regime, catalysts, watchlist contracts, and defined-risk structures. Use when user asks for MC updates, data source provenance, trade-readiness checks, or to run/refresh the SPY brief workflow.
+description: Generate and relay SPY market context (MC) briefs from local cron/snapshot pipelines, including data-quality state (OK/PARTIAL_DATA), regime, catalysts, watchlist contracts, and defined-risk structures. Use when user asks for MC updates, data source provenance, trade-readiness checks, or explicitly asks '/mc', '/mc now', or 'run MC now' to run/refresh the SPY brief workflow.
 ---
 
 # MC Market Brief
@@ -18,6 +18,14 @@ Run the local SPY MC pipeline, summarize clearly, and separate **planning** from
 ## Commands
 
 Use workspace-root paths.
+
+Preferred single command:
+
+```bash
+python3 scripts/mc_command.py --max-attempts 2 --retry-delay-sec 180
+```
+
+Legacy split commands:
 
 ```bash
 node scripts/spy_live_snapshot.cjs
