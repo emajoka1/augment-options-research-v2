@@ -26,6 +26,8 @@ This wrapper:
 - classifies state as `NO_TRADE` / `WATCH` / `TRADE_READY`,
 - logs each run to `snapshots/mc_runs.jsonl`.
 
+Launchd timing is session-aware: premarket, US-open burst (14:30/15:00/15:30 London), and pre-close.
+
 ## State-change alerting (for cron)
 
 Only emits when state changes (`action_state`, `data_status`, or `final_decision`):
@@ -60,6 +62,12 @@ View aggregated outcome report:
 
 ```bash
 python3 scripts/mc_outcome_report.py
+```
+
+Explain current decision gates:
+
+```bash
+python3 scripts/mc_why.py
 ```
 
 Optional env vars:

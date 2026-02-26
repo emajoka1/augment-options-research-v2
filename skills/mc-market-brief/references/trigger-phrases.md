@@ -16,6 +16,8 @@ Treat these as status commands:
 - `mc scorecard`
 - `/mc outcomes`
 - `mc outcomes`
+- `/mc why`
+- `mc why`
 
 ## Response Behavior
 
@@ -41,3 +43,7 @@ Treat these as status commands:
 ### For `/mc outcomes`
 
 - Run `python3 scripts/mc_outcome_report.py` and return outcome performance summary.
+
+### For `/mc why`
+
+- Run `python3 scripts/mc_why.py` and return a plain-English gate-by-gate explanation for the current decision.
