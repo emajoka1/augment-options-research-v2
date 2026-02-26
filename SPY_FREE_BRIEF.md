@@ -57,6 +57,7 @@ Optional env vars:
 
 - 5 catalyst links (public sources)
 - Best-effort regime read (SPY, VIX, US10Y proxy, DXY proxy via Yahoo)
+- Free options fallback via Cboe delayed quotes JSON (no API key)
 - Top structural watchlist contracts (nearest expiries/near-ATM strikes)
 - 3 defined-risk setup templates
 - Explicit `missing_for_trade_ready` fields

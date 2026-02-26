@@ -75,6 +75,84 @@ def get_yahoo_series(sym: str, rng: str = "3mo", interval: str = "1d"):
         return None
 
 
+def _norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def _bs_delta(spot: float, strike: float, t_years: float, rate: float, iv: float, side: str):
+    try:
+        if not spot or not strike or t_years <= 0 or iv <= 0:
+            return None
+        d1 = (math.log(spot / strike) + (rate + 0.5 * iv * iv) * t_years) / (iv * math.sqrt(t_years))
+        if side == "C":
+            return _norm_cdf(d1)
+        return _norm_cdf(d1) - 1.0
+    except Exception:
+        return None
+
+
+def watchlist_from_cboe_options(spot: float, symbol: str = "SPY"):
+    try:
+        payload = http_json(f"https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json")
+        options = payload.get("data", {}).get("options", [])
+        now = datetime.now(timezone.utc)
+        rows = []
+
+        parsed = []
+        for o in options:
+            osym = o.get("option")
+            if not osym or len(osym) < 15:
+                continue
+            try:
+                exp = datetime.strptime(osym[len(symbol):len(symbol)+6], "%y%m%d").date()
+                side = osym[len(symbol)+6]
+                strike = int(osym[-8:]) / 1000.0
+            except Exception:
+                continue
+            dte = max(0, (exp - now.date()).days)
+            parsed.append((dte, abs(strike - (spot or strike)), side, strike, osym, o))
+
+        parsed.sort(key=lambda x: (x[0], x[1]))
+        selected = parsed[:80]
+        for dte, _, side, strike, osym, o in selected:
+            bid = o.get("bid")
+            ask = o.get("ask")
+            last = o.get("last_trade_price")
+            iv = o.get("iv")
+            mark = None
+            if isinstance(bid, (int, float)) and isinstance(ask, (int, float)):
+                mark = (float(bid) + float(ask)) / 2.0
+            elif isinstance(last, (int, float)):
+                mark = float(last)
+
+            t_years = max(dte / 365.0, 1.0 / 365.0)
+            row = {
+                "expiry": datetime.strptime(osym[len(symbol):len(symbol)+6], "%y%m%d").date().isoformat(),
+                "dte": dte,
+                "strike": strike,
+                "side": side,
+                "symbol": osym,
+                "bid": float(bid) if isinstance(bid, (int, float)) else None,
+                "ask": float(ask) if isinstance(ask, (int, float)) else None,
+                "mark": mark,
+                "last": float(last) if isinstance(last, (int, float)) else None,
+                "delta": float(o.get("delta")) if isinstance(o.get("delta"), (int, float)) else _bs_delta(float(spot), strike, t_years, 0.04, float(iv), side),
+                "iv": float(iv) if isinstance(iv, (int, float)) else None,
+                "openInterest": int(o.get("open_interest")) if isinstance(o.get("open_interest"), (int, float)) else None,
+                "dayVolume": int(o.get("volume")) if isinstance(o.get("volume"), (int, float)) else None,
+                "confidence": "cboe-delayed-public",
+            }
+            sp = spread_pct(row)
+            row["spreadPct"] = round(sp, 4) if sp is not None else None
+            row["liquid"] = is_liquid(row)
+            rows.append(row)
+
+        rows.sort(key=lambda r: (r.get("dte", 999), abs((r.get("strike") or 0) - (spot or 0))))
+        return rows
+    except Exception:
+        return []
+
+
 def ann_realized_vol(closes, window=10):
     c = [x for x in closes if isinstance(x, (int, float))]
     if len(c) < window + 1:
@@ -540,6 +618,12 @@ def main():
     spot = spot or get_spot_from_dx(DXLINK_PATH) or get_spot_from_yahoo()
 
     rows = watchlist_from_live(live) if live else []
+    # Fallback to free/public Cboe delayed options when live snapshot is partial or empty.
+    if (not rows or not any(r.get("iv") is not None for r in rows)) and spot:
+        crows = watchlist_from_cboe_options(spot, "SPY")
+        if crows:
+            rows = crows
+
     context = regime_snapshot(spot)
     vol = vol_state(rows, context["realizedVol"].get("rv10"), context["realizedVol"].get("rv20"))
 
@@ -556,7 +640,7 @@ def main():
     if not spot:
         mandatory_missing.append("spot")
     if not rows:
-        mandatory_missing.append("live_option_rows")
+        mandatory_missing.append("option_rows")
     if vol.get("ivCurrent") is None:
         mandatory_missing.append("ivCurrent")
     if context["realizedVol"].get("rv10") is None and context["realizedVol"].get("rv20") is None:
