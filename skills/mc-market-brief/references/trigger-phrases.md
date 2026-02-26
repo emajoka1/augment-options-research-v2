@@ -14,6 +14,8 @@ Treat these as status commands:
 - `mc status`
 - `/mc scorecard`
 - `mc scorecard`
+- `/mc outcomes`
+- `mc outcomes`
 
 ## Response Behavior
 
@@ -35,3 +37,7 @@ Treat these as status commands:
 ### For `/mc scorecard`
 
 - Run `python3 scripts/mc_scorecard.py` and return aggregate run summary.
+
+### For `/mc outcomes`
+
+- Run `python3 scripts/mc_outcome_report.py` and return outcome performance summary.
