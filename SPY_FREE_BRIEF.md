@@ -48,6 +48,20 @@ python3 scripts/mc_scorecard.py
 
 Shows run counts by action/data/decision and the last run snapshot.
 
+## Outcome tracker (learning loop)
+
+Update post-signal outcomes (T+30m, T+2h, EOD proxy):
+
+```bash
+python3 scripts/mc_outcome_update.py
+```
+
+View aggregated outcome report:
+
+```bash
+python3 scripts/mc_outcome_report.py
+```
+
 Optional env vars:
 
 - `SPY_CHAIN_PATH` (default: `~/lab/data/tastytrade/SPY_nested_chain.json`)
