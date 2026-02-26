@@ -129,9 +129,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     if cvar_worst_r is None or cvar_worst_r <= -1.0:
         mc_ready = False
         mc_rule_failures.append("cvar_worst_not_above_-1R")
-    if delta_ev_stress_r is None or not (delta_ev_stress_r < -0.05):
+    if delta_ev_stress_r is None or delta_ev_stress_r < -0.05:
         mc_ready = False
-        mc_rule_failures.append("stress_delta_ev_not_below_-0.05R")
+        mc_rule_failures.append("stress_delta_ev_below_-0.05R")
     if edge.get("explainable") is not True:
         mc_ready = False
         mc_rule_failures.append("edge_not_explainable")
