@@ -62,18 +62,10 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     top = candidates[0] if candidates else {}
 
     symbols_with_data = None
-    data_status = "OK"
+    dxlink_partial = False
     if live is not None:
         symbols_with_data = live.get("symbolsWithData")
-        if not symbols_with_data:
-            data_status = "PARTIAL_DATA"
-
-    if data_status == "PARTIAL_DATA" or missing_required:
-        action_state = "NO_TRADE"
-    elif final_decision == "TRADE":
-        action_state = "TRADE_READY"
-    else:
-        action_state = "WATCH"
+        dxlink_partial = not bool(symbols_with_data)
 
     iv_current = ((tb.get("Volatility State") or {}).get("ivCurrent"))
     if live is not None and symbols_with_data and symbols_with_data > 0:
@@ -82,6 +74,22 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         data_source = "cboe-delayed-public"
     else:
         data_source = "unknown"
+
+    if data_source == "dxlink-live":
+        data_status = "OK"
+    elif data_source == "cboe-delayed-public":
+        data_status = "OK_FALLBACK"
+    elif dxlink_partial:
+        data_status = "PARTIAL_DATA"
+    else:
+        data_status = "UNKNOWN"
+
+    if missing_required:
+        action_state = "NO_TRADE"
+    elif final_decision == "TRADE":
+        action_state = "TRADE_READY"
+    else:
+        action_state = "WATCH"
 
     return {
         "timestamp": _now_iso(),
@@ -160,7 +168,7 @@ def main() -> int:
         )
 
         last = normalized
-        if normalized["data_status"] == "OK":
+        if normalized["data_status"] in {"OK", "OK_FALLBACK"}:
             break
         if i < args.max_attempts:
             time.sleep(max(0, args.retry_delay_sec))
