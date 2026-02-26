@@ -75,10 +75,19 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     else:
         action_state = "WATCH"
 
+    iv_current = ((tb.get("Volatility State") or {}).get("ivCurrent"))
+    if live is not None and symbols_with_data and symbols_with_data > 0:
+        data_source = "dxlink-live"
+    elif iv_current is not None:
+        data_source = "cboe-delayed-public"
+    else:
+        data_source = "unknown"
+
     return {
         "timestamp": _now_iso(),
         "data_status": data_status,
         "symbols_with_data": symbols_with_data,
+        "data_source": data_source,
         "spot": tb.get("Spot"),
         "regime": (tb.get("Regime") or {}).get("riskState"),
         "trend": (tb.get("Regime") or {}).get("trend"),
@@ -112,6 +121,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Status: **{n['data_status']}**\n"
         f"- Action: **{n['action_state']}**\n"
         f"- Spot (SPY): **{n.get('spot')}**\n"
+        f"- Data Source: **{n.get('data_source')}**\n"
         f"- Regime: **{n.get('regime')}** | trend **{n.get('trend')}** | VIX **{n.get('vix_direction')}** | US10Y **{n.get('rates_direction')}**\n"
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
@@ -141,6 +151,7 @@ def main() -> int:
                 "timestamp": normalized["timestamp"],
                 "attempt": i,
                 "data_status": normalized["data_status"],
+                "data_source": normalized.get("data_source"),
                 "action_state": normalized["action_state"],
                 "spot": normalized["spot"],
                 "final_decision": normalized["final_decision"],
