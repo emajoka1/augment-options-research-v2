@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / "snapshots" / "mc_last_state.json"
@@ -77,12 +80,33 @@ def maybe_notify(text: str, enabled: bool) -> None:
     )
 
 
+def maybe_notify_telegram(text: str, enabled: bool, chat_id: str | None) -> None:
+    if not enabled:
+        return
+    token = os.environ.get("TG_BOT_TOKEN")
+    cid = chat_id or os.environ.get("TG_CHAT_ID")
+    if not token or not cid:
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = urlencode({"chat_id": cid, "text": text}).encode("utf-8")
+    req = Request(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urlopen(req, timeout=8) as r:
+            _ = r.read()
+    except Exception:
+        # keep scheduler resilient
+        pass
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Run MC and notify only on state changes")
     ap.add_argument("--max-attempts", type=int, default=2)
     ap.add_argument("--retry-delay-sec", type=int, default=180)
     ap.add_argument("--skip-live", action="store_true")
     ap.add_argument("--notify", action="store_true", help="Emit openclaw system event on change")
+    ap.add_argument("--telegram", action="store_true", help="Send Telegram message on change (requires TG_BOT_TOKEN + TG_CHAT_ID)")
+    ap.add_argument("--tg-chat-id", default=None, help="Override Telegram chat id (else TG_CHAT_ID env)")
     ap.add_argument("--force", action="store_true", help="Emit summary even if state unchanged")
     args = ap.parse_args()
 
@@ -96,6 +120,7 @@ def main() -> int:
         txt = summary(cur)
         print(txt)
         maybe_notify(txt, args.notify)
+        maybe_notify_telegram(txt, args.telegram, args.tg_chat_id)
     else:
         print("NO_CHANGE")
 
