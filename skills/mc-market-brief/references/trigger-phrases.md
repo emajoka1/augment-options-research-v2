@@ -1,5 +1,13 @@
 # MC Trigger Phrases
 
+## Pinned Trigger Mapping (canonical)
+
+- `/mc` → `python3 scripts/mc_command.py --max-attempts 2 --retry-delay-sec 180`
+- `/mc status` → `python3 scripts/mc_status.py`
+- `/mc scorecard` → `python3 scripts/mc_scorecard.py`
+- `/mc outcomes` → `python3 scripts/mc_outcome_report.py`
+- `/mc why` → `python3 scripts/mc_why.py`
+
 Treat these user inputs as the same action:
 
 - `/mc`
