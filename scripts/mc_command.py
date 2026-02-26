@@ -54,6 +54,16 @@ def run_brief() -> Dict[str, Any]:
     return _extract_json_blob(out)
 
 
+def latest_options_mc() -> Optional[Dict[str, Any]]:
+    files = sorted((ROOT / "kb" / "experiments").glob("options-mc-*.json"))
+    if not files:
+        return None
+    try:
+        return json.loads(files[-1].read_text())
+    except Exception:
+        return None
+
+
 def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str, Any]:
     tb = brief.get("TRADE BRIEF", {})
     final_decision = tb.get("Final Decision", "NO TRADE")
@@ -84,9 +94,51 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     else:
         data_status = "UNKNOWN"
 
+    # Additional TRADE_READY gates from latest options MC report.
+    mc = latest_options_mc() or {}
+    ms = mc.get("multi_seed_confidence") or {}
+    edge = mc.get("edge_attribution") or {}
+    fh = mc.get("friction_hurdle") or {}
+
+    ev_p5_r = None
+    cvar_worst_r = None
+    delta_ev_stress_r = None
+    mc_rule_failures = []
+
+    try:
+        ev_5th = ms.get("ev_5th_percentile")
+        cvar_worst = ms.get("cvar_worst")
+        metrics = mc.get("metrics") or {}
+        r_unit = max(abs(float(metrics.get("min_pl", 0.0))), 1e-6)
+        if isinstance(ev_5th, (int, float)):
+            ev_p5_r = float(ev_5th) / r_unit
+        if isinstance(cvar_worst, (int, float)):
+            cvar_worst_r = float(cvar_worst) / r_unit
+
+        if isinstance(fh.get("ev_stress_R"), (int, float)) and isinstance(fh.get("ev_real_R"), (int, float)):
+            delta_ev_stress_r = float(fh.get("ev_stress_R")) - float(fh.get("ev_real_R"))
+        elif isinstance(fh.get("ev_stress_R"), (int, float)) and isinstance(fh.get("ev_mid_R"), (int, float)):
+            delta_ev_stress_r = float(fh.get("ev_stress_R")) - float(fh.get("ev_mid_R"))
+    except Exception:
+        pass
+
+    mc_ready = True
+    if ev_p5_r is None or ev_p5_r <= 0.02:
+        mc_ready = False
+        mc_rule_failures.append("ev_p5_not_above_0.02R")
+    if cvar_worst_r is None or cvar_worst_r <= -1.0:
+        mc_ready = False
+        mc_rule_failures.append("cvar_worst_not_above_-1R")
+    if delta_ev_stress_r is None or not (delta_ev_stress_r < -0.05):
+        mc_ready = False
+        mc_rule_failures.append("stress_delta_ev_not_below_-0.05R")
+    if edge.get("explainable") is not True:
+        mc_ready = False
+        mc_rule_failures.append("edge_not_explainable")
+
     if missing_required:
         action_state = "NO_TRADE"
-    elif final_decision == "TRADE":
+    elif final_decision == "TRADE" and mc_ready:
         action_state = "TRADE_READY"
     else:
         action_state = "WATCH"
@@ -104,6 +156,14 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "final_decision": final_decision,
         "action_state": action_state,
         "missing_required": missing_required,
+        "trade_ready_rule": {
+            "ev_5th_R": ev_p5_r,
+            "cvar_worst_R": cvar_worst_r,
+            "stress_delta_ev_R": delta_ev_stress_r,
+            "explainable_edge": edge.get("explainable"),
+            "pass": mc_ready,
+            "failures": mc_rule_failures,
+        },
         "top_candidate": {
             "type": top.get("type"),
             "decision": top.get("decision"),
@@ -124,6 +184,8 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     missing = n.get("missing_required") or []
     miss_txt = ", ".join(f"`{m}`" for m in missing) if missing else "none"
     top = n.get("top_candidate") or {}
+    tr = n.get("trade_ready_rule") or {}
+    tr_fail = ", ".join(tr.get("failures") or []) if (tr.get("failures") or []) else "none"
     return (
         f"MC Snapshot (attempt {attempt}/{max_attempts})\n"
         f"- Status: **{n['data_status']}**\n"
@@ -134,6 +196,8 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Missing for trade-ready: {miss_txt}\n"
+        f"- TRADE_READY rule: pass={tr.get('pass')} | EV_5th_R={tr.get('ev_5th_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_R={tr.get('stress_delta_ev_R')} | Explainable={tr.get('explainable_edge')}\n"
+        f"- TRADE_READY rule failures: {tr_fail}\n"
     )
 
 
@@ -164,6 +228,8 @@ def main() -> int:
                 "spot": normalized["spot"],
                 "final_decision": normalized["final_decision"],
                 "missing_required": normalized["missing_required"],
+                "trade_ready_rule_pass": (normalized.get("trade_ready_rule") or {}).get("pass"),
+                "trade_ready_rule_failures": (normalized.get("trade_ready_rule") or {}).get("failures"),
             }
         )
 
