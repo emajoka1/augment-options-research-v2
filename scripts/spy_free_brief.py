@@ -16,7 +16,7 @@ MIN_VOL = int(os.environ.get("SPY_MIN_VOL", "100"))
 MAX_SPREAD_PCT = float(os.environ.get("SPY_MAX_SPREAD_PCT", "0.10"))
 MULTI_LEG_SPREAD_PCT_THRESHOLD = float(os.environ.get("SPY_MULTI_LEG_MAX_SPREAD_PCT", "0.05"))
 ACCOUNT_SIZE = float(os.environ.get("SPY_ACCOUNT_SIZE", "10000"))
-RISK_PCT = float(os.environ.get("SPY_RISK_PCT", "0.0075"))
+RISK_PCT = float(os.environ.get("SPY_RISK_PCT", "0.025"))
 
 
 def http_json(url: str, timeout: int = 8):
