@@ -164,9 +164,12 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "crn_scope": randomness.get("crn_scope"),
     }
 
-    ev_p5_r = None
+    ev_seed_p5_r = None
+    ev_seed_p5_min_batches = 5
     ev_mean_r = None
     ev_stress_mean_r = None
+    pl_p5_r = None
+    pl_p5_threshold_r = -0.50
     cvar_worst_r = None
     delta_ev_stress_mean_r = None
     mc_rule_failures = []
@@ -175,8 +178,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     r_unit_source = "unavailable"
     r_minpl_debug = None
     try:
-        ev_5th = ms.get("ev_5th_percentile")
+        ev_seed_p5_raw = ms.get("ev_5th_percentile")
         cvar_worst = ms.get("cvar_worst")
+        n_batches = ms.get("n_batches")
         r_unit, r_unit_source = _derive_structural_r(mc)
         if r_unit is not None:
             r_unit = max(float(r_unit), 1e-6)
@@ -185,10 +189,15 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         if isinstance(metrics.get("min_pl"), (int, float)):
             r_minpl_debug = abs(float(metrics.get("min_pl")))
 
-        if isinstance(ev_5th, (int, float)) and r_unit:
-            ev_p5_r = float(ev_5th) / r_unit
+        if isinstance(ev_seed_p5_raw, (int, float)) and isinstance(n_batches, int) and n_batches >= ev_seed_p5_min_batches and r_unit:
+            ev_seed_p5_r = float(ev_seed_p5_raw) / r_unit
         if isinstance(cvar_worst, (int, float)) and r_unit:
             cvar_worst_r = float(cvar_worst) / r_unit
+
+        # Pathwise tail metric (distribution of per-path outcomes).
+        dp = mc.get("distribution_percentiles") or {}
+        if isinstance(dp.get("p5"), (int, float)) and r_unit:
+            pl_p5_r = float(dp.get("p5")) / r_unit
 
         # Stress gate MUST use mean EVs, normalized by structural R.
         ev_real_mean = fh.get("ev_real")
@@ -203,9 +212,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         pass
 
     mc_ready = True
-    if ev_p5_r is None or ev_p5_r <= 0.02:
+    if pl_p5_r is None or pl_p5_r <= pl_p5_threshold_r:
         mc_ready = False
-        mc_rule_failures.append("ev_p5_not_above_0.02R")
+        mc_rule_failures.append("pl_p5_not_above_threshold")
     if cvar_worst_r is None or cvar_worst_r <= -1.0:
         mc_ready = False
         mc_rule_failures.append("cvar_worst_not_above_-1R")
@@ -241,8 +250,11 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "r_structural_source": r_unit_source,
             "r_minpl_debug": r_minpl_debug,
             "ev_mean_R": ev_mean_r,
-            "ev_5th_R": ev_p5_r,
+            "ev_seed_p5_R": ev_seed_p5_r,
+            "ev_seed_p5_min_batches": ev_seed_p5_min_batches,
             "ev_stress_mean_R": ev_stress_mean_r,
+            "pl_p5_R": pl_p5_r,
+            "pl_p5_threshold_R": pl_p5_threshold_r,
             "cvar_worst_R": cvar_worst_r,
             "stress_delta_ev_mean_R": delta_ev_stress_mean_r,
             "explainable_edge": edge.get("explainable"),
@@ -288,7 +300,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Missing for trade-ready: {miss_txt}\n"
-        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_5th_R={tr.get('ev_5th_R')} | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
+        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_seed_p5_R={tr.get('ev_seed_p5_R')} (min_batches={tr.get('ev_seed_p5_min_batches')}) | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | PL_p5_R={tr.get('pl_p5_R')} (thr>{tr.get('pl_p5_threshold_R')}) | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
         f"- MC provenance: {pv_txt}\n"
     )
