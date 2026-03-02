@@ -17,6 +17,7 @@ MAX_SPREAD_PCT = float(os.environ.get("SPY_MAX_SPREAD_PCT", "0.10"))
 MULTI_LEG_SPREAD_PCT_THRESHOLD = float(os.environ.get("SPY_MULTI_LEG_MAX_SPREAD_PCT", "0.05"))
 ACCOUNT_SIZE = float(os.environ.get("SPY_ACCOUNT_SIZE", "10000"))
 RISK_PCT = float(os.environ.get("SPY_RISK_PCT", "0.025"))
+MAX_RISK_DOLLARS = float(os.environ.get("SPY_MAX_RISK_DOLLARS", "250"))
 
 
 def http_json(url: str, timeout: int = 8):
@@ -219,7 +220,8 @@ def choose_leg(rows, side, dte_lo, dte_hi, d_lo, d_hi):
 def contracts_for_risk(max_loss):
     if not max_loss or max_loss <= 0:
         return 0
-    return int((ACCOUNT_SIZE * RISK_PCT) // max_loss)
+    max_risk_dollars = MAX_RISK_DOLLARS if MAX_RISK_DOLLARS > 0 else (ACCOUNT_SIZE * RISK_PCT)
+    return int(max_risk_dollars // max_loss)
 
 
 def expected_move(spot, iv, dte):
@@ -680,7 +682,7 @@ def main():
             "riskFramework": {
                 "accountSize": ACCOUNT_SIZE,
                 "maxRiskPct": RISK_PCT,
-                "maxRiskDollars": round(ACCOUNT_SIZE * RISK_PCT, 2),
+                "maxRiskDollars": round(MAX_RISK_DOLLARS if MAX_RISK_DOLLARS > 0 else (ACCOUNT_SIZE * RISK_PCT), 2),
             },
         }
     }
