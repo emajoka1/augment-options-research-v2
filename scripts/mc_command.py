@@ -54,14 +54,15 @@ def run_brief() -> Dict[str, Any]:
     return _extract_json_blob(out)
 
 
-def latest_options_mc() -> Optional[Dict[str, Any]]:
+def latest_options_mc() -> tuple[Optional[Dict[str, Any]], Optional[str]]:
     files = sorted((ROOT / "kb" / "experiments").glob("options-mc-*.json"))
     if not files:
-        return None
+        return None, None
+    src = str(files[-1])
     try:
-        return json.loads(files[-1].read_text())
+        return json.loads(files[-1].read_text()), src
     except Exception:
-        return None
+        return None, src
 
 
 def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
@@ -146,10 +147,22 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         data_status = "UNKNOWN"
 
     # Additional TRADE_READY gates from latest options MC report.
-    mc = latest_options_mc() or {}
+    mc, mc_source_file = latest_options_mc()
+    mc = mc or {}
     ms = mc.get("multi_seed_confidence") or {}
     edge = mc.get("edge_attribution") or {}
     fh = mc.get("friction_hurdle") or {}
+    assumptions = mc.get("assumptions") or {}
+    randomness = mc.get("randomness_policy") or {}
+    mc_provenance = {
+        "options_mc_source_file": mc_source_file,
+        "generated_at": mc.get("generated_at"),
+        "model": assumptions.get("model"),
+        "n_batches": ms.get("n_batches"),
+        "paths_per_batch": ms.get("paths_per_batch"),
+        "base_seed": randomness.get("base_seed"),
+        "crn_scope": randomness.get("crn_scope"),
+    }
 
     ev_p5_r = None
     ev_mean_r = None
@@ -236,6 +249,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "pass": mc_ready,
             "failures": mc_rule_failures,
         },
+        "mc_provenance": mc_provenance,
         "top_candidate": {
             "type": top.get("type"),
             "decision": top.get("decision"),
@@ -258,6 +272,12 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     top = n.get("top_candidate") or {}
     tr = n.get("trade_ready_rule") or {}
     tr_fail = ", ".join(tr.get("failures") or []) if (tr.get("failures") or []) else "none"
+    pv = n.get("mc_provenance") or {}
+    pv_txt = (
+        f"source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
+        f"model={pv.get('model')} | n_batches={pv.get('n_batches')} | paths_per_batch={pv.get('paths_per_batch')} | "
+        f"base_seed={pv.get('base_seed')} | crn_scope={pv.get('crn_scope')}"
+    )
     return (
         f"MC Snapshot (attempt {attempt}/{max_attempts})\n"
         f"- Status: **{n['data_status']}**\n"
@@ -270,6 +290,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Missing for trade-ready: {miss_txt}\n"
         f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_5th_R={tr.get('ev_5th_R')} | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
+        f"- MC provenance: {pv_txt}\n"
     )
 
 
