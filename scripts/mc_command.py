@@ -64,6 +64,57 @@ def latest_options_mc() -> Optional[Dict[str, Any]]:
         return None
 
 
+def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
+    """Derive a stable, structure-based risk unit (R).
+
+    Priority:
+    1) Defined-risk width from strikes (verticals/condors/flies)
+    2) Single-leg premium proxy from breakeven distance
+    3) Fallback to abs(min_pl) (debug legacy only)
+    """
+    assumptions = mc.get("assumptions") or {}
+    legs = assumptions.get("legs") or []
+
+    # 1) Width-based R for defined-risk multi-leg structures.
+    calls = sorted([float(l.get("strike")) for l in legs if (l.get("option_type") == "call" and l.get("strike") is not None)])
+    puts = sorted([float(l.get("strike")) for l in legs if (l.get("option_type") == "put" and l.get("strike") is not None)])
+
+    widths = []
+    if len(calls) >= 2:
+        widths.append(abs(calls[-1] - calls[0]))
+    if len(puts) >= 2:
+        widths.append(abs(puts[-1] - puts[0]))
+    if widths:
+        r = max(widths)
+        if r > 0:
+            return r, "defined_risk_width"
+
+    # 2) Single-leg premium proxy from breakeven distance.
+    if len(legs) == 1:
+        leg = legs[0]
+        strike = leg.get("strike")
+        bes = mc.get("breakevens") or []
+        if strike is not None and bes:
+            try:
+                strike_f = float(strike)
+                be_dist = min(abs(float(be) - strike_f) for be in bes)
+                if be_dist > 0:
+                    return be_dist, "single_leg_breakeven_premium_proxy"
+            except Exception:
+                pass
+
+    # 3) Legacy fallback (stochastic; keep only as a backup).
+    metrics = mc.get("metrics") or {}
+    try:
+        r = abs(float(metrics.get("min_pl", 0.0)))
+        if r > 0:
+            return r, "fallback_abs_min_pl"
+    except Exception:
+        pass
+
+    return None, "unavailable"
+
+
 def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str, Any]:
     tb = brief.get("TRADE BRIEF", {})
     final_decision = tb.get("Final Decision", "NO TRADE")
@@ -105,14 +156,17 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     delta_ev_stress_r = None
     mc_rule_failures = []
 
+    r_unit = None
+    r_unit_source = "unavailable"
     try:
         ev_5th = ms.get("ev_5th_percentile")
         cvar_worst = ms.get("cvar_worst")
-        metrics = mc.get("metrics") or {}
-        r_unit = max(abs(float(metrics.get("min_pl", 0.0))), 1e-6)
-        if isinstance(ev_5th, (int, float)):
+        r_unit, r_unit_source = _derive_structural_r(mc)
+        if r_unit is not None:
+            r_unit = max(float(r_unit), 1e-6)
+        if isinstance(ev_5th, (int, float)) and r_unit:
             ev_p5_r = float(ev_5th) / r_unit
-        if isinstance(cvar_worst, (int, float)):
+        if isinstance(cvar_worst, (int, float)) and r_unit:
             cvar_worst_r = float(cvar_worst) / r_unit
 
         if isinstance(fh.get("ev_stress_R"), (int, float)) and isinstance(fh.get("ev_real_R"), (int, float)):
@@ -157,6 +211,8 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "action_state": action_state,
         "missing_required": missing_required,
         "trade_ready_rule": {
+            "r_unit": r_unit,
+            "r_unit_source": r_unit_source,
             "ev_5th_R": ev_p5_r,
             "cvar_worst_R": cvar_worst_r,
             "stress_delta_ev_R": delta_ev_stress_r,
@@ -196,7 +252,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Missing for trade-ready: {miss_txt}\n"
-        f"- TRADE_READY rule: pass={tr.get('pass')} | EV_5th_R={tr.get('ev_5th_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_R={tr.get('stress_delta_ev_R')} | Explainable={tr.get('explainable_edge')}\n"
+        f"- TRADE_READY rule: pass={tr.get('pass')} | R={tr.get('r_unit')} ({tr.get('r_unit_source')}) | EV_5th_R={tr.get('ev_5th_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_R={tr.get('stress_delta_ev_R')} | Explainable={tr.get('explainable_edge')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
     )
 
