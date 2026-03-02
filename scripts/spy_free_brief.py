@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import uuid
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from urllib.request import Request, urlopen
@@ -612,6 +613,9 @@ def main():
     live = load_live(LIVE_PATH)
     _ = load_chain(CHAIN_PATH)  # keep compatibility for environment
 
+    brief_id = f"brief_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
+    snapshot_id = ((live or {}).get("snapshotId") or (live or {}).get("snapshot_id")) if isinstance(live, dict) else None
+
     spot = None
     if live and live.get("underlying", {}).get("mark"):
         spot = float(live["underlying"]["mark"])
@@ -654,6 +658,11 @@ def main():
         final_decision = analyses[0]["decision"]
 
     output = {
+        "brief_meta": {
+            "brief_id": brief_id,
+            "snapshot_id": snapshot_id,
+            "live_path": LIVE_PATH,
+        },
         "TRADE BRIEF": {
             "Time": context["timeUserTz"],
             "Ticker": "SPY",

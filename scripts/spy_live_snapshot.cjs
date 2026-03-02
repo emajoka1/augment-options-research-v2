@@ -2,6 +2,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 
 const { DXLinkWebSocketClient, DXLinkFeed, FeedDataFormat } = require('/Users/forge/lab/tastytrade/node_modules/@dxfeed/dxlink-api');
 
@@ -36,7 +37,9 @@ function pickContracts(chain, spotGuess) {
   const contracts = pickContracts(chain, 680);
   const symbols = contracts.map(c => c.symbol);
 
+  const snapshotId = `snapshot_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
   const out = {
+    snapshotId,
     startedAt: new Date().toISOString(),
     source: 'dxlink-delayed',
     level: qt.level,
@@ -87,6 +90,6 @@ function pickContracts(chain, spotGuess) {
 
   fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
   fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2));
-  console.log(JSON.stringify({ ok: true, outPath: OUT_PATH, contracts: contracts.length, symbolsWithData: Object.keys(out.data).length }, null, 2));
+  console.log(JSON.stringify({ ok: true, snapshot_id: snapshotId, outPath: OUT_PATH, contracts: contracts.length, symbolsWithData: Object.keys(out.data).length }, null, 2));
   process.exit(0);
 })();

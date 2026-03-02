@@ -14,6 +14,7 @@ import json
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -118,6 +119,10 @@ def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
 
 def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str, Any]:
     tb = brief.get("TRADE BRIEF", {})
+    brief_meta = brief.get("brief_meta") or {}
+    mc_id = f"mc_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
+    snapshot_id = ((live or {}).get("snapshotId") or (live or {}).get("snapshot_id")) if isinstance(live, dict) else None
+    brief_id = brief_meta.get("brief_id")
     final_decision = tb.get("Final Decision", "NO TRADE")
     missing_required = tb.get("missingRequiredData", []) or []
     candidates = tb.get("Candidates", []) or []
@@ -234,6 +239,11 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
 
     return {
         "timestamp": _now_iso(),
+        "trace_ids": {
+            "snapshot_id": snapshot_id,
+            "brief_id": brief_id,
+            "mc_id": mc_id,
+        },
         "data_status": data_status,
         "symbols_with_data": symbols_with_data,
         "data_source": data_source,
@@ -285,6 +295,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     tr = n.get("trade_ready_rule") or {}
     tr_fail = ", ".join(tr.get("failures") or []) if (tr.get("failures") or []) else "none"
     pv = n.get("mc_provenance") or {}
+    ids = n.get("trace_ids") or {}
     pv_txt = (
         f"source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
         f"model={pv.get('model')} | n_batches={pv.get('n_batches')} | paths_per_batch={pv.get('paths_per_batch')} | "
@@ -298,6 +309,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Data Source: **{n.get('data_source')}**\n"
         f"- Regime: **{n.get('regime')}** | trend **{n.get('trend')}** | VIX **{n.get('vix_direction')}** | US10Y **{n.get('rates_direction')}**\n"
         f"- Final Decision: **{n.get('final_decision')}**\n"
+        f"- Trace IDs: snapshot_id={ids.get('snapshot_id')} | brief_id={ids.get('brief_id')} | mc_id={ids.get('mc_id')}\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Missing for trade-ready: {miss_txt}\n"
         f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_seed_p5_R={tr.get('ev_seed_p5_R')} (min_batches={tr.get('ev_seed_p5_min_batches')}) | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | PL_p5_R={tr.get('pl_p5_R')} (thr>{tr.get('pl_p5_threshold_R')}) | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
