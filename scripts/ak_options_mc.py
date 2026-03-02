@@ -313,11 +313,37 @@ def main():
     else:
         structure_match = 0.0
 
+    # Explainability: allow fallback-driven attribution when full data is partial.
+    mean_revert_prob = float(regime_probs.get("mean_revert|vol_contracting", 0.0))
+
+    # Signal thresholds (simple + robust):
+    # - IV rich vs RV is present if computable (no directional threshold required for presence)
+    # - Regime probability should be meaningful
+    # - Structure/expected-move fit should be non-trivial
+    iv_rv_present = iv_rv_gap is not None
+    regime_present = np.isfinite(mean_revert_prob)
+    structure_present = np.isfinite(structure_match)
+
+    iv_rv_pass = iv_rv_present
+    regime_pass = regime_present and (mean_revert_prob >= 0.20)
+    structure_pass = structure_present and (structure_match >= 0.05)
+
+    explainability_signals_present = int(iv_rv_present) + int(regime_present) + int(structure_present)
+    explainability_signals_pass = int(iv_rv_pass) + int(regime_pass) + int(structure_pass)
+    explainable = explainability_signals_pass >= 2
+
     attribution = {
         "iv_rich_vs_rv": iv_rv_gap,
-        "mean_reversion_regime_probability": float(regime_probs.get("mean_revert|vol_contracting", 0.0)),
+        "mean_reversion_regime_probability": mean_revert_prob,
         "structure_expected_move_match": structure_match,
-        "explainable": bool(iv_rv_gap is not None and regime_prob > 0 and structure_match > 0),
+        "signals_present": explainability_signals_present,
+        "signals_pass": explainability_signals_pass,
+        "thresholds": {
+            "regime_prob_min": 0.20,
+            "structure_match_min": 0.05,
+            "min_signals_pass": 2,
+        },
+        "explainable": bool(explainable),
     }
 
     gate["allow_trade"] = bool(
