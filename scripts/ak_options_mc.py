@@ -238,9 +238,12 @@ def main():
     m_mid = mid_batch[-1]
     m_wide = stress_batch[-1]
 
+    n_total_paths = int(n_batches * n_paths_batch)
+
     multi_seed = {
         "n_batches": int(n_batches),
         "paths_per_batch": int(n_paths_batch),
+        "n_total_paths": n_total_paths,
         "ev_mean": float(np.mean(ev_real_vals)),
         "ev_std": float(np.std(ev_real_vals)),
         "ev_5th_percentile": float(np.percentile(ev_real_vals, 5)),
@@ -335,7 +338,7 @@ def main():
             "r": args.r,
             "q": args.q,
             "expiry_years": expiry_years,
-            "n_paths": args.n_paths,
+            "n_paths": n_total_paths,
             "n_batches": n_batches,
             "paths_per_batch": n_paths_batch,
             "dt": dt,
@@ -393,6 +396,7 @@ def main():
                 "pop_mean": multi_seed["pop_mean"],
                 "cvar_mean": multi_seed["cvar_mean"],
                 "cvar_worst": multi_seed["cvar_worst"],
+                "n_total_paths": n_total_paths,
                 "allow_trade": gate["allow_trade"],
             },
             indent=2,
