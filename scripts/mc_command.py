@@ -335,6 +335,10 @@ def main() -> int:
         normalized["attempt"] = i
         normalized["max_attempts"] = args.max_attempts
 
+        trace_ids = normalized.get("trace_ids") or {}
+        if not trace_ids.get("snapshot_id"):
+            raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
+
         append_log(
             {
                 "timestamp": normalized["timestamp"],
