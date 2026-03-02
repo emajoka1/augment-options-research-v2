@@ -152,6 +152,8 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     fh = mc.get("friction_hurdle") or {}
 
     ev_p5_r = None
+    ev_mean_r = None
+    ev_stress_mean_r = None
     cvar_worst_r = None
     delta_ev_stress_mean_r = None
     mc_rule_failures = []
@@ -178,6 +180,10 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         # Stress gate MUST use mean EVs, normalized by structural R.
         ev_real_mean = fh.get("ev_real")
         ev_stress_mean = fh.get("ev_stress")
+        if isinstance(ev_real_mean, (int, float)) and r_unit:
+            ev_mean_r = float(ev_real_mean) / r_unit
+        if isinstance(ev_stress_mean, (int, float)) and r_unit:
+            ev_stress_mean_r = float(ev_stress_mean) / r_unit
         if isinstance(ev_real_mean, (int, float)) and isinstance(ev_stress_mean, (int, float)) and r_unit:
             delta_ev_stress_mean_r = (float(ev_stress_mean) - float(ev_real_mean)) / r_unit
     except Exception:
@@ -221,7 +227,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "r_structural": r_unit,
             "r_structural_source": r_unit_source,
             "r_minpl_debug": r_minpl_debug,
+            "ev_mean_R": ev_mean_r,
             "ev_5th_R": ev_p5_r,
+            "ev_stress_mean_R": ev_stress_mean_r,
             "cvar_worst_R": cvar_worst_r,
             "stress_delta_ev_mean_R": delta_ev_stress_mean_r,
             "explainable_edge": edge.get("explainable"),
@@ -260,7 +268,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Missing for trade-ready: {miss_txt}\n"
-        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_5th_R={tr.get('ev_5th_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
+        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_5th_R={tr.get('ev_5th_R')} | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
     )
 
