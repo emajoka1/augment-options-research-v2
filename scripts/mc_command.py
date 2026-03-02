@@ -153,26 +153,33 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
 
     ev_p5_r = None
     cvar_worst_r = None
-    delta_ev_stress_r = None
+    delta_ev_stress_mean_r = None
     mc_rule_failures = []
 
     r_unit = None
     r_unit_source = "unavailable"
+    r_minpl_debug = None
     try:
         ev_5th = ms.get("ev_5th_percentile")
         cvar_worst = ms.get("cvar_worst")
         r_unit, r_unit_source = _derive_structural_r(mc)
         if r_unit is not None:
             r_unit = max(float(r_unit), 1e-6)
+
+        metrics = mc.get("metrics") or {}
+        if isinstance(metrics.get("min_pl"), (int, float)):
+            r_minpl_debug = abs(float(metrics.get("min_pl")))
+
         if isinstance(ev_5th, (int, float)) and r_unit:
             ev_p5_r = float(ev_5th) / r_unit
         if isinstance(cvar_worst, (int, float)) and r_unit:
             cvar_worst_r = float(cvar_worst) / r_unit
 
-        if isinstance(fh.get("ev_stress_R"), (int, float)) and isinstance(fh.get("ev_real_R"), (int, float)):
-            delta_ev_stress_r = float(fh.get("ev_stress_R")) - float(fh.get("ev_real_R"))
-        elif isinstance(fh.get("ev_stress_R"), (int, float)) and isinstance(fh.get("ev_mid_R"), (int, float)):
-            delta_ev_stress_r = float(fh.get("ev_stress_R")) - float(fh.get("ev_mid_R"))
+        # Stress gate MUST use mean EVs, normalized by structural R.
+        ev_real_mean = fh.get("ev_real")
+        ev_stress_mean = fh.get("ev_stress")
+        if isinstance(ev_real_mean, (int, float)) and isinstance(ev_stress_mean, (int, float)) and r_unit:
+            delta_ev_stress_mean_r = (float(ev_stress_mean) - float(ev_real_mean)) / r_unit
     except Exception:
         pass
 
@@ -183,9 +190,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     if cvar_worst_r is None or cvar_worst_r <= -1.0:
         mc_ready = False
         mc_rule_failures.append("cvar_worst_not_above_-1R")
-    if delta_ev_stress_r is None or delta_ev_stress_r < -0.05:
+    if delta_ev_stress_mean_r is None or delta_ev_stress_mean_r < -0.05:
         mc_ready = False
-        mc_rule_failures.append("stress_delta_ev_below_-0.05R")
+        mc_rule_failures.append("stress_delta_ev_mean_below_-0.05R")
     if edge.get("explainable") is not True:
         mc_ready = False
         mc_rule_failures.append("edge_not_explainable")
@@ -211,11 +218,12 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "action_state": action_state,
         "missing_required": missing_required,
         "trade_ready_rule": {
-            "r_unit": r_unit,
-            "r_unit_source": r_unit_source,
+            "r_structural": r_unit,
+            "r_structural_source": r_unit_source,
+            "r_minpl_debug": r_minpl_debug,
             "ev_5th_R": ev_p5_r,
             "cvar_worst_R": cvar_worst_r,
-            "stress_delta_ev_R": delta_ev_stress_r,
+            "stress_delta_ev_mean_R": delta_ev_stress_mean_r,
             "explainable_edge": edge.get("explainable"),
             "pass": mc_ready,
             "failures": mc_rule_failures,
@@ -252,7 +260,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Missing for trade-ready: {miss_txt}\n"
-        f"- TRADE_READY rule: pass={tr.get('pass')} | R={tr.get('r_unit')} ({tr.get('r_unit_source')}) | EV_5th_R={tr.get('ev_5th_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_R={tr.get('stress_delta_ev_R')} | Explainable={tr.get('explainable_edge')}\n"
+        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_5th_R={tr.get('ev_5th_R')} | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
     )
 
