@@ -159,12 +159,31 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     fh = mc.get("friction_hurdle") or {}
     assumptions = mc.get("assumptions") or {}
     randomness = mc.get("randomness_policy") or {}
+    n_batches = ms.get("n_batches")
+    paths_per_batch = ms.get("paths_per_batch")
+    n_total_paths = ms.get("n_total_paths")
+    assumptions_n_paths = assumptions.get("n_paths")
+    computed_n_total_paths = None
+    if isinstance(n_batches, int) and isinstance(paths_per_batch, int):
+        computed_n_total_paths = int(n_batches * paths_per_batch)
+
+    counts_consistent = (
+        computed_n_total_paths is not None
+        and isinstance(n_total_paths, int)
+        and isinstance(assumptions_n_paths, int)
+        and n_total_paths == computed_n_total_paths == assumptions_n_paths
+    )
+
     mc_provenance = {
         "options_mc_source_file": mc_source_file,
         "generated_at": mc.get("generated_at"),
         "model": assumptions.get("model"),
-        "n_batches": ms.get("n_batches"),
-        "paths_per_batch": ms.get("paths_per_batch"),
+        "n_batches": n_batches,
+        "paths_per_batch": paths_per_batch,
+        "n_total_paths": n_total_paths,
+        "computed_n_total_paths": computed_n_total_paths,
+        "assumptions_n_paths": assumptions_n_paths,
+        "counts_consistent": counts_consistent,
         "base_seed": randomness.get("base_seed"),
         "crn_scope": randomness.get("crn_scope"),
     }
@@ -229,6 +248,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     if edge.get("explainable") is not True:
         mc_ready = False
         mc_rule_failures.append("edge_not_explainable")
+    if mc_provenance.get("counts_consistent") is not True:
+        mc_ready = False
+        mc_rule_failures.append("path_count_mismatch")
 
     if missing_required:
         action_state = "NO_TRADE"
@@ -299,6 +321,8 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     pv_txt = (
         f"source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
         f"model={pv.get('model')} | n_batches={pv.get('n_batches')} | paths_per_batch={pv.get('paths_per_batch')} | "
+        f"n_total_paths={pv.get('n_total_paths')} | computed_n_total_paths={pv.get('computed_n_total_paths')} | "
+        f"assumptions_n_paths={pv.get('assumptions_n_paths')} | counts_consistent={pv.get('counts_consistent')} | "
         f"base_seed={pv.get('base_seed')} | crn_scope={pv.get('crn_scope')}"
     )
     return (
@@ -338,6 +362,14 @@ def main() -> int:
         trace_ids = normalized.get("trace_ids") or {}
         if not trace_ids.get("snapshot_id"):
             raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
+        mc_provenance = normalized.get("mc_provenance") or {}
+        if mc_provenance.get("counts_consistent") is not True:
+            raise RuntimeError(
+                "Inconsistent path counts in options-mc source "
+                f"(n_total_paths={mc_provenance.get('n_total_paths')}, "
+                f"computed={mc_provenance.get('computed_n_total_paths')}, "
+                f"assumptions_n_paths={mc_provenance.get('assumptions_n_paths')})"
+            )
 
         append_log(
             {
