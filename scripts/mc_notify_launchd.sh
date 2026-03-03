@@ -12,5 +12,5 @@ if [ -f "/Users/forge/.openclaw/workspace/.mc.env" ]; then
   source /Users/forge/.openclaw/workspace/.mc.env
 fi
 
-/usr/bin/python3 scripts/mc_notify_if_changed.py --skip-live --max-attempts 1 --retry-delay-sec 0 --telegram --tg-chat-id 7577147381 >> snapshots/mc_cron.log 2>&1
+/usr/bin/python3 scripts/mc_notify_if_changed.py --max-attempts 1 --retry-delay-sec 0 --telegram --tg-chat-id 7577147381 >> snapshots/mc_cron.log 2>&1
 /usr/bin/python3 scripts/mc_outcome_update.py >> snapshots/mc_cron.log 2>&1
