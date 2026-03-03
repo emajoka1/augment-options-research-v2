@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import uuid
+from typing import Tuple
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -115,6 +116,33 @@ def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
         pass
 
     return None, "unavailable"
+
+
+def load_allocation_state() -> Dict[str, Any]:
+    p = ROOT / "snapshots" / "steady_state.json"
+    if not p.exists():
+        return {"trades_today": 0, "trades_week": 0, "day_pnl_r": 0.0, "correlated_exposure_pct": 0.0}
+    try:
+        d = json.loads(p.read_text())
+        return {
+            "trades_today": int(d.get("trades_today", 0)),
+            "trades_week": int(d.get("trades_week", 0)),
+            "day_pnl_r": float(d.get("day_pnl_r", 0.0)),
+            "correlated_exposure_pct": float(d.get("correlated_exposure_pct", 0.0)),
+        }
+    except Exception:
+        return {"trades_today": 0, "trades_week": 0, "day_pnl_r": 0.0, "correlated_exposure_pct": 0.0}
+
+
+def run_steady_gate(payload: Dict[str, Any]) -> Dict[str, Any]:
+    cmd = ["python3", "scripts/steady_compounder_gate.py"]
+    p = subprocess.run(cmd, cwd=ROOT, input=json.dumps(payload), capture_output=True, text=True)
+    if p.returncode != 0:
+        return {"decision": "PASS", "approved": False, "reasons": ["steady_gate_exec_failed"]}
+    try:
+        return json.loads(p.stdout)
+    except Exception:
+        return {"decision": "PASS", "approved": False, "reasons": ["steady_gate_parse_failed"]}
 
 
 def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str, Any]:
@@ -252,9 +280,39 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         mc_ready = False
         mc_rule_failures.append("path_count_mismatch")
 
+    # Enforce steady-compounder hierarchy gate (fail-closed).
+    top_score = (top.get("score") or 0.0)
+    try:
+        structural_quality = max(0.0, min(1.0, float(top_score) / 100.0))
+    except Exception:
+        structural_quality = 0.0
+
+    steady_payload = {
+        "structure": {
+            "quality": structural_quality,
+            "structural_r_clean": r_unit is not None,
+            "invalidation_1r": bool(top.get("type")),
+        },
+        "mc": {
+            "ev_seed_p5_r": ev_seed_p5_r,
+            "pl_p5_r": pl_p5_r,
+            "cvar95_r": cvar_worst_r,
+            "stress_delta_ev_r": delta_ev_stress_mean_r,
+            "explainable": edge.get("explainable"),
+        },
+        "regime": {
+            "bucket": "hostile" if str((tb.get("Regime") or {}).get("riskState", "")).lower() == "risk-off" else "neutral",
+            "extreme_vol": str(((tb.get("Volatility State") or {}).get("classifier") or {}).get("regime", "")).upper() == "EXTREME_VOL",
+            "short_premium": bool(top.get("type") in {"credit", "condor", "iron_condor", "iron_fly"}),
+        },
+        "allocation": load_allocation_state(),
+    }
+    steady_gate = run_steady_gate(steady_payload)
+    steady_ok = bool(steady_gate.get("approved"))
+
     if missing_required:
         action_state = "NO_TRADE"
-    elif final_decision == "TRADE" and mc_ready:
+    elif final_decision == "TRADE" and mc_ready and steady_ok:
         action_state = "TRADE_READY"
     else:
         action_state = "WATCH"
@@ -290,8 +348,15 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "cvar_worst_R": cvar_worst_r,
             "stress_delta_ev_mean_R": delta_ev_stress_mean_r,
             "explainable_edge": edge.get("explainable"),
-            "pass": mc_ready,
-            "failures": mc_rule_failures,
+            "pass": bool(mc_ready and steady_ok),
+            "failures": list(dict.fromkeys((mc_rule_failures or []) + (steady_gate.get("reasons") or []))),
+        },
+        "steady_gate": {
+            "decision": steady_gate.get("decision"),
+            "approved": steady_ok,
+            "risk_multiplier": steady_gate.get("risk_multiplier"),
+            "reasons": steady_gate.get("reasons") or [],
+            "input": steady_payload,
         },
         "mc_provenance": mc_provenance,
         "top_candidate": {
