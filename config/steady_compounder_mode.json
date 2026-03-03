@@ -1,0 +1,78 @@
+{
+  "mode": "slightly_aggressive_steady_compounder",
+  "version": "1.0.0",
+  "objective": "Increase return per trade without materially increasing fragility or ruin probability.",
+  "hierarchy": [
+    "structure_engine",
+    "structural_quality_gate",
+    "monte_carlo_gate",
+    "regime_filter",
+    "capital_allocation_gate",
+    "trade_approval",
+    "logging",
+    "weekly_audit"
+  ],
+  "structural_gate": {
+    "min_quality_score": 0.65,
+    "require_clean_structural_r": true,
+    "require_1r_invalidation": true
+  },
+  "mc_gate": {
+    "ev_seed_p5_min_r": 0.03,
+    "pl_p5_min_r": -0.5,
+    "cvar95_min_r": -0.9,
+    "stress_delta_ev_min_r": -0.05,
+    "require_explainable": true
+  },
+  "regime_risk_multiplier": {
+    "hostile": 0.5,
+    "neutral": 1.0,
+    "supportive": 1.0
+  },
+  "regime_overrides": {
+    "disable_short_premium_in_extreme_vol": true
+  },
+  "allocation": {
+    "risk_per_trade_pct_min": 0.75,
+    "risk_per_trade_pct_max": 1.0,
+    "max_trades_per_day": 3,
+    "max_trades_per_week": 6,
+    "daily_loss_cap_r": -2.5,
+    "max_correlated_exposure_pct": 70
+  },
+  "adaptive_sizing": {
+    "loss_streak_trigger": 3,
+    "reduced_size_multiplier": 0.5,
+    "reduced_size_for_next_trades": 2,
+    "restore_on_new_equity_high": true
+  },
+  "scan_windows": [
+    "london_open",
+    "ny_open",
+    "ny_afternoon"
+  ],
+  "macro_throttle": {
+    "enabled": true,
+    "events": [
+      "major_macro_shocks",
+      "rate_decisions",
+      "high_impact_geopolitical_oil_events"
+    ],
+    "risk_multiplier_on_event": [0.5, 0.0]
+  },
+  "prohibitions": {
+    "add_new_strategies": false,
+    "lower_mc_thresholds": false,
+    "increase_trade_frequency": false,
+    "override_gates": false,
+    "add_discretionary_signals": false
+  },
+  "next_optimization_after_weeks": {
+    "min_weeks": 4,
+    "max_weeks": 8,
+    "requires_clean_live_logging": true,
+    "lever": "asymmetry_tuning",
+    "target_avg_winner_r": [2.2, 2.5],
+    "loss_r": 1.0
+  }
+}
