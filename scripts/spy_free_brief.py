@@ -3,7 +3,7 @@ import json
 import math
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from urllib.request import Request, urlopen
 
@@ -43,10 +43,24 @@ def load_live(path):
         return None
 
 
-def get_spot_from_dx(path: str):
+def live_is_fresh(live: dict, max_age_minutes: int = 5) -> bool:
+    try:
+        ts = live.get("finishedAt") or live.get("startedAt")
+        if not ts:
+            return False
+        t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) - t <= timedelta(minutes=max_age_minutes)
+    except Exception:
+        return False
+
+
+def get_spot_from_dx(path: str, max_age_minutes: int = 5):
     if not os.path.exists(path):
         return None
     try:
+        mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+        if datetime.now(timezone.utc) - mtime > timedelta(minutes=max_age_minutes):
+            return None
         with open(path) as f:
             d = json.load(f)
         for ev in d.get("events", []):
@@ -619,11 +633,12 @@ def main():
     snapshot_id = ((live or {}).get("snapshotId") or (live or {}).get("snapshot_id")) if isinstance(live, dict) else None
 
     spot = None
-    if live and live.get("underlying", {}).get("mark"):
+    live_fresh = bool(live and live_is_fresh(live))
+    if live_fresh and live.get("underlying", {}).get("mark"):
         spot = float(live["underlying"]["mark"])
     spot = spot or get_spot_from_dx(DXLINK_PATH) or get_spot_from_yahoo()
 
-    rows = watchlist_from_live(live) if live else []
+    rows = watchlist_from_live(live) if live_fresh else []
     # Fallback to free/public Cboe delayed options when live snapshot is partial or empty.
     if (not rows or not any(r.get("iv") is not None for r in rows)) and spot:
         crows = watchlist_from_cboe_options(spot, "SPY")
@@ -664,6 +679,7 @@ def main():
             "brief_id": brief_id,
             "snapshot_id": snapshot_id,
             "live_path": LIVE_PATH,
+            "live_fresh": live_fresh,
         },
         "TRADE BRIEF": {
             "Time": context["timeUserTz"],
