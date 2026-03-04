@@ -78,6 +78,33 @@ def run_brief() -> Dict[str, Any]:
     return _extract_json_blob(out)
 
 
+def refresh_options_mc(spot: Optional[float]) -> bool:
+    """Best-effort refresh of options-MC source when stale."""
+    py = ROOT / ".venv" / "bin" / "python"
+    py_bin = str(py) if py.exists() else "python3"
+    s = float(spot) if isinstance(spot, (int, float)) else (get_cboe_spot_mid("SPY") or 685.0)
+    cmd = [
+        py_bin,
+        "scripts/ak_options_mc.py",
+        "--model",
+        "jump",
+        "--example",
+        "put_diagonal",
+        "--spot",
+        str(round(float(s), 3)),
+        "--expiry-days",
+        "7",
+        "--n-batches",
+        "10",
+        "--paths-per-batch",
+        "500",
+        "--seed",
+        "3019",
+    ]
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    return p.returncode == 0
+
+
 def latest_options_mc(max_age_minutes: int = 120) -> tuple[Optional[Dict[str, Any]], Optional[str], bool]:
     files = sorted((ROOT / "kb" / "experiments").glob("options-mc-*.json"))
     if not files:
@@ -210,6 +237,10 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
 
     # Additional TRADE_READY gates from latest options MC report.
     mc, mc_source_file, mc_source_stale = latest_options_mc()
+    # Auto-heal stale MC source once before evaluating gates.
+    if mc_source_stale:
+        _ = refresh_options_mc(tb.get("Spot"))
+        mc, mc_source_file, mc_source_stale = latest_options_mc()
     mc = mc or {}
     ms = mc.get("multi_seed_confidence") or {}
     edge = mc.get("edge_attribution") or {}
