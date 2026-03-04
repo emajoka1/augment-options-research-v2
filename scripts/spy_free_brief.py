@@ -73,13 +73,29 @@ def get_spot_from_dx(path: str, max_age_minutes: int = 5):
     return None
 
 
+def get_spot_from_cboe_quote(symbol: str = "SPY"):
+    try:
+        d = http_json(f"https://cdn.cboe.com/api/global/delayed_quotes/quotes/{symbol}.json")
+        q = d.get("data", {})
+        b, a = q.get("bid"), q.get("ask")
+        if isinstance(b, (int, float)) and isinstance(a, (int, float)) and b > 0 and a > 0:
+            return (float(b) + float(a)) / 2.0, "cboe_bid_ask_mid", q.get("last_trade_time")
+        lp = q.get("last_trade_price") or q.get("last")
+        if isinstance(lp, (int, float)) and lp > 0:
+            return float(lp), "cboe_last", q.get("last_trade_time")
+    except Exception:
+        pass
+    return None, None, None
+
+
 def get_spot_from_yahoo():
     try:
         d = http_json("https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1m&range=1d")
         m = d["chart"]["result"][0].get("meta", {})
-        return float(m.get("regularMarketPrice") or m.get("previousClose"))
+        v = float(m.get("regularMarketPrice") or m.get("previousClose"))
+        return v, "yahoo_regular_market", None
     except Exception:
-        return None
+        return None, None, None
 
 
 def get_yahoo_series(sym: str, rng: str = "3mo", interval: str = "1d"):
@@ -633,10 +649,29 @@ def main():
     snapshot_id = ((live or {}).get("snapshotId") or (live or {}).get("snapshot_id")) if isinstance(live, dict) else None
 
     spot = None
+    spot_source = None
+    spot_ts = None
     live_fresh = bool(live and live_is_fresh(live))
-    if live_fresh and live.get("underlying", {}).get("mark"):
+
+    cboe_spot, cboe_src, cboe_ts = get_spot_from_cboe_quote("SPY")
+    if cboe_spot:
+        spot, spot_source, spot_ts = cboe_spot, cboe_src, cboe_ts
+
+    if not spot and live_fresh and live.get("underlying", {}).get("mark"):
         spot = float(live["underlying"]["mark"])
-    spot = spot or get_spot_from_dx(DXLINK_PATH) or get_spot_from_yahoo()
+        spot_source = "live_underlying_mark"
+        spot_ts = live.get("finishedAt") or live.get("startedAt")
+
+    if not spot:
+        dx_spot = get_spot_from_dx(DXLINK_PATH)
+        if dx_spot:
+            spot = dx_spot
+            spot_source = "dx_quote_mid"
+
+    if not spot:
+        y_spot, y_src, y_ts = get_spot_from_yahoo()
+        if y_spot:
+            spot, spot_source, spot_ts = y_spot, y_src, y_ts
 
     rows = watchlist_from_live(live) if live_fresh else []
     # Fallback to free/public Cboe delayed options when live snapshot is partial or empty.
@@ -680,6 +715,8 @@ def main():
             "snapshot_id": snapshot_id,
             "live_path": LIVE_PATH,
             "live_fresh": live_fresh,
+            "spot_source": spot_source,
+            "spot_timestamp": spot_ts,
         },
         "TRADE BRIEF": {
             "Time": context["timeUserTz"],

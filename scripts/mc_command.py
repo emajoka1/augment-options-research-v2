@@ -56,15 +56,22 @@ def run_brief() -> Dict[str, Any]:
     return _extract_json_blob(out)
 
 
-def latest_options_mc() -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+def latest_options_mc(max_age_minutes: int = 120) -> tuple[Optional[Dict[str, Any]], Optional[str], bool]:
     files = sorted((ROOT / "kb" / "experiments").glob("options-mc-*.json"))
     if not files:
-        return None, None
-    src = str(files[-1])
+        return None, None, True
+    f = files[-1]
+    src = str(f)
+    stale = False
     try:
-        return json.loads(files[-1].read_text()), src
+        age_sec = (datetime.now(timezone.utc).timestamp() - f.stat().st_mtime)
+        stale = age_sec > (max_age_minutes * 60)
     except Exception:
-        return None, src
+        stale = True
+    try:
+        return json.loads(f.read_text()), src, stale
+    except Exception:
+        return None, src, stale
 
 
 def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
@@ -180,7 +187,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         data_status = "UNKNOWN"
 
     # Additional TRADE_READY gates from latest options MC report.
-    mc, mc_source_file = latest_options_mc()
+    mc, mc_source_file, mc_source_stale = latest_options_mc()
     mc = mc or {}
     ms = mc.get("multi_seed_confidence") or {}
     edge = mc.get("edge_attribution") or {}
@@ -212,6 +219,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "computed_n_total_paths": computed_n_total_paths,
         "assumptions_n_paths": assumptions_n_paths,
         "counts_consistent": counts_consistent,
+        "source_stale": mc_source_stale,
         "base_seed": randomness.get("base_seed"),
         "crn_scope": randomness.get("crn_scope"),
     }
@@ -279,6 +287,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     if mc_provenance.get("counts_consistent") is not True:
         mc_ready = False
         mc_rule_failures.append("path_count_mismatch")
+    if mc_provenance.get("source_stale") is True:
+        mc_ready = False
+        mc_rule_failures.append("options_mc_source_stale")
 
     # Enforce steady-compounder hierarchy gate (fail-closed).
     top_score = (top.get("score") or 0.0)
@@ -387,7 +398,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
         f"model={pv.get('model')} | n_batches={pv.get('n_batches')} | paths_per_batch={pv.get('paths_per_batch')} | "
         f"n_total_paths={pv.get('n_total_paths')} | computed_n_total_paths={pv.get('computed_n_total_paths')} | "
-        f"assumptions_n_paths={pv.get('assumptions_n_paths')} | counts_consistent={pv.get('counts_consistent')} | "
+        f"assumptions_n_paths={pv.get('assumptions_n_paths')} | counts_consistent={pv.get('counts_consistent')} | source_stale={pv.get('source_stale')} | "
         f"base_seed={pv.get('base_seed')} | crn_scope={pv.get('crn_scope')}"
     )
     return (
@@ -435,6 +446,8 @@ def main() -> int:
                 f"computed={mc_provenance.get('computed_n_total_paths')}, "
                 f"assumptions_n_paths={mc_provenance.get('assumptions_n_paths')})"
             )
+        if mc_provenance.get("source_stale") is True:
+            raise RuntimeError("Stale options-mc source file: refresh required before decisioning")
 
         append_log(
             {
