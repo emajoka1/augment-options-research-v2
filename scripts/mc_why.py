@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,14 +27,22 @@ def run_mc_json() -> dict:
     return json.loads(p.stdout)
 
 
-def latest_options_mc() -> dict | None:
+def latest_options_mc(max_age_minutes: int = 120) -> tuple[dict | None, str | None, bool]:
     files = sorted(MC_DIR.glob("options-mc-*.json"))
     if not files:
-        return None
+        return None, None, True
+    f = files[-1]
+    src = str(f)
+    stale = False
     try:
-        return json.loads(files[-1].read_text())
+        age_sec = datetime.now(timezone.utc).timestamp() - f.stat().st_mtime
+        stale = age_sec > (max_age_minutes * 60)
     except Exception:
-        return None
+        stale = True
+    try:
+        return json.loads(f.read_text()), src, stale
+    except Exception:
+        return None, src, stale
 
 
 def main() -> int:
@@ -42,7 +51,7 @@ def main() -> int:
     vol = raw.get("Volatility State") or {}
     top = m.get("top_candidate") or {}
     missing = m.get("missing_required") or []
-    omc = latest_options_mc()
+    omc, omc_src, omc_stale = latest_options_mc()
 
     print("MC Why")
     print(f"- Action: {m.get('action_state')}")
@@ -74,6 +83,7 @@ def main() -> int:
         ms = omc.get("multi_seed_confidence") or {}
         gate = omc.get("gates") or {}
         print("- MC risk metrics (latest options MC run):")
+        print(f"  source={omc_src} | source_stale={omc_stale}")
         print(
             f"  EV={metrics.get('ev')} | VaR95={metrics.get('var95')} | CVaR95={metrics.get('cvar95')}"
         )
@@ -85,6 +95,9 @@ def main() -> int:
         print(f"  allow_trade={gate.get('allow_trade')} | regime={gate.get('regime')}")
     else:
         print("- MC risk metrics: unavailable (no options-mc report found yet)")
+
+    if omc_stale:
+        print("- Warning: options-MC source is stale; refresh MC before trusting risk diagnostics.")
 
     print("- Intuition: market is not giving a clear priced edge that passes all gates yet.")
     return 0
