@@ -78,8 +78,8 @@ def run_brief() -> Dict[str, Any]:
     return _extract_json_blob(out)
 
 
-def refresh_options_mc(spot: Optional[float]) -> bool:
-    """Best-effort refresh of options-MC source when stale."""
+def generate_options_mc_for_run(spot: Optional[float]) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Generate a fresh options-MC artifact for THIS run and return payload + path."""
     py = ROOT / ".venv" / "bin" / "python"
     py_bin = str(py) if py.exists() else "python3"
     s = float(spot) if isinstance(spot, (int, float)) else (get_cboe_spot_mid("SPY") or 685.0)
@@ -102,7 +102,16 @@ def refresh_options_mc(spot: Optional[float]) -> bool:
         "3019",
     ]
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
-    return p.returncode == 0
+    if p.returncode != 0:
+        return None, None
+    try:
+        out = json.loads(p.stdout)
+        src = out.get("json")
+        if not src:
+            return None, None
+        return json.loads(Path(src).read_text()), str(src)
+    except Exception:
+        return None, None
 
 
 def latest_options_mc(max_age_minutes: int = 120) -> tuple[Optional[Dict[str, Any]], Optional[str], bool]:
@@ -235,11 +244,11 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     else:
         data_status = "UNKNOWN"
 
-    # Additional TRADE_READY gates from latest options MC report.
-    mc, mc_source_file, mc_source_stale = latest_options_mc()
-    # Auto-heal stale MC source once before evaluating gates.
-    if mc_source_stale:
-        _ = refresh_options_mc(tb.get("Spot"))
+    # Additional TRADE_READY gates from run-local options MC artifact (single-source-of-truth).
+    mc, mc_source_file = generate_options_mc_for_run(tb.get("Spot"))
+    mc_source_stale = False
+    if mc is None:
+        # Fallback only if generation fails.
         mc, mc_source_file, mc_source_stale = latest_options_mc()
     mc = mc or {}
     ms = mc.get("multi_seed_confidence") or {}
@@ -263,6 +272,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     )
 
     mc_provenance = {
+        "options_mc_source_mode": "run_local_fresh" if mc_source_stale is False else "fallback_latest",
         "options_mc_source_file": mc_source_file,
         "generated_at": mc.get("generated_at"),
         "model": assumptions.get("model"),
@@ -461,7 +471,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     ids = n.get("trace_ids") or {}
     si = n.get("spot_integrity") or {}
     pv_txt = (
-        f"source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
+        f"source_mode={pv.get('options_mc_source_mode')} | source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
         f"model={pv.get('model')} | n_batches={pv.get('n_batches')} | paths_per_batch={pv.get('paths_per_batch')} | "
         f"n_total_paths={pv.get('n_total_paths')} | computed_n_total_paths={pv.get('computed_n_total_paths')} | "
         f"assumptions_n_paths={pv.get('assumptions_n_paths')} | counts_consistent={pv.get('counts_consistent')} | source_stale={pv.get('source_stale')} | "
