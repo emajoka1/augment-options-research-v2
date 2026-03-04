@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import uuid
+from urllib.request import Request, urlopen
 from typing import Tuple
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,27 @@ def _run(cmd: list[str]) -> str:
     if p.returncode != 0:
         raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{p.stderr.strip()}")
     return p.stdout
+
+
+def _http_json(url: str) -> Dict[str, Any]:
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(req, timeout=8) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def get_cboe_spot_mid(symbol: str = "SPY") -> Optional[float]:
+    try:
+        d = _http_json(f"https://cdn.cboe.com/api/global/delayed_quotes/quotes/{symbol}.json")
+        q = d.get("data", {})
+        b, a = q.get("bid"), q.get("ask")
+        if isinstance(b, (int, float)) and isinstance(a, (int, float)) and b > 0 and a > 0:
+            return (float(b) + float(a)) / 2.0
+        lp = q.get("last_trade_price") or q.get("last")
+        if isinstance(lp, (int, float)):
+            return float(lp)
+    except Exception:
+        return None
+    return None
 
 
 def _extract_json_blob(text: str) -> Dict[str, Any]:
@@ -291,6 +313,17 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         mc_ready = False
         mc_rule_failures.append("options_mc_source_stale")
 
+    # Spot integrity guard: compare pipeline spot to fresh CBOE quote mid.
+    spot_integrity = {"ref_source": "cboe_quote_mid", "ref_spot": None, "delta": None, "max_delta": 0.5, "ok": None}
+    ref_spot = get_cboe_spot_mid("SPY")
+    pipe_spot = tb.get("Spot")
+    if isinstance(ref_spot, (int, float)) and isinstance(pipe_spot, (int, float)):
+        delta = abs(float(pipe_spot) - float(ref_spot))
+        spot_integrity.update({"ref_spot": float(ref_spot), "delta": delta, "ok": delta <= 0.5})
+        if delta > 0.5:
+            mc_ready = False
+            mc_rule_failures.append("spot_integrity_mismatch")
+
     # Enforce steady-compounder hierarchy gate (fail-closed).
     top_score = (top.get("score") or 0.0)
     try:
@@ -369,6 +402,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "reasons": steady_gate.get("reasons") or [],
             "input": steady_payload,
         },
+        "spot_integrity": spot_integrity,
         "mc_provenance": mc_provenance,
         "top_candidate": {
             "type": top.get("type"),
@@ -394,6 +428,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     tr_fail = ", ".join(tr.get("failures") or []) if (tr.get("failures") or []) else "none"
     pv = n.get("mc_provenance") or {}
     ids = n.get("trace_ids") or {}
+    si = n.get("spot_integrity") or {}
     pv_txt = (
         f"source={pv.get('options_mc_source_file')} | generated_at={pv.get('generated_at')} | "
         f"model={pv.get('model')} | n_batches={pv.get('n_batches')} | paths_per_batch={pv.get('paths_per_batch')} | "
@@ -411,6 +446,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Final Decision: **{n.get('final_decision')}**\n"
         f"- Trace IDs: snapshot_id={ids.get('snapshot_id')} | brief_id={ids.get('brief_id')} | mc_id={ids.get('mc_id')}\n"
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
+        f"- Spot integrity: ok={si.get('ok')} | pipeline_spot={n.get('spot')} | ref_spot={si.get('ref_spot')} | delta={si.get('delta')} (max={si.get('max_delta')})\n"
         f"- Missing for trade-ready: {miss_txt}\n"
         f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_seed_p5_R={tr.get('ev_seed_p5_R')} (min_batches={tr.get('ev_seed_p5_min_batches')}) | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | PL_p5_R={tr.get('pl_p5_R')} (thr>{tr.get('pl_p5_threshold_R')}) | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
@@ -448,6 +484,12 @@ def main() -> int:
             )
         if mc_provenance.get("source_stale") is True:
             raise RuntimeError("Stale options-mc source file: refresh required before decisioning")
+        spot_integrity = normalized.get("spot_integrity") or {}
+        if spot_integrity.get("ok") is False:
+            raise RuntimeError(
+                "Spot integrity mismatch "
+                f"(pipeline={normalized.get('spot')}, ref={spot_integrity.get('ref_spot')}, delta={spot_integrity.get('delta')})"
+            )
 
         append_log(
             {
