@@ -63,6 +63,18 @@ def get_cboe_spot_mid(symbol: str = "SPY") -> Optional[float]:
     return None
 
 
+def get_yahoo_spot(symbol: str = "SPY") -> Optional[float]:
+    try:
+        d = _http_json(f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d")
+        m = (((d.get("chart") or {}).get("result") or [{}])[0].get("meta") or {})
+        px = m.get("regularMarketPrice") or m.get("previousClose")
+        if isinstance(px, (int, float)):
+            return float(px)
+    except Exception:
+        return None
+    return None
+
+
 def _extract_json_blob(text: str) -> Dict[str, Any]:
     # Supports tools that may print extra lines before/after JSON.
     start = text.find("{")
@@ -425,16 +437,24 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         mc_ready = False
         mc_rule_failures.append("options_mc_source_stale")
 
-    # Spot integrity guard: compare pipeline spot to fresh CBOE quote mid.
-    spot_integrity = {"ref_source": "cboe_quote_mid", "ref_spot": None, "delta": None, "max_delta": 0.5, "ok": None}
+    # Spot integrity guard: compare pipeline spot to independent reference (CBOE, fallback Yahoo).
+    spot_integrity = {"ref_source": "none", "ref_spot": None, "delta": None, "max_delta": 0.5, "ok": False}
     ref_spot = get_cboe_spot_mid("SPY")
+    ref_source = "cboe_quote_mid"
+    if not isinstance(ref_spot, (int, float)):
+        ref_spot = get_yahoo_spot("SPY")
+        ref_source = "yahoo_regular_market"
+
     pipe_spot = tb.get("Spot")
     if isinstance(ref_spot, (int, float)) and isinstance(pipe_spot, (int, float)):
         delta = abs(float(pipe_spot) - float(ref_spot))
-        spot_integrity.update({"ref_spot": float(ref_spot), "delta": delta, "ok": delta <= 0.5})
+        spot_integrity.update({"ref_source": ref_source, "ref_spot": float(ref_spot), "delta": delta, "ok": delta <= 0.5})
         if delta > 0.5:
             mc_ready = False
             mc_rule_failures.append("spot_integrity_mismatch")
+    else:
+        mc_ready = False
+        mc_rule_failures.append("spot_integrity_reference_unavailable")
 
     # Enforce steady-compounder hierarchy gate (fail-closed).
     top_score = (top.get("score") or 0.0)
