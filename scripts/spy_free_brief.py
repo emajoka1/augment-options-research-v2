@@ -6,6 +6,15 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from urllib.request import Request, urlopen
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from ak_system.risk.estimator import estimate_structure_risk, risk_cap_dollars as shared_risk_cap_dollars
 
 CHAIN_PATH = os.environ.get("SPY_CHAIN_PATH", os.path.expanduser("~/lab/data/tastytrade/SPY_nested_chain.json"))
 DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", os.path.expanduser("~/lab/data/tastytrade/dxlink_snapshot.json"))
@@ -24,7 +33,7 @@ MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "25"))
 
 
 def risk_cap_dollars() -> float:
-    return MAX_RISK_DOLLARS if MAX_RISK_DOLLARS > 0 else (ACCOUNT_SIZE * RISK_PCT)
+    return shared_risk_cap_dollars(ACCOUNT_SIZE, RISK_PCT, MAX_RISK_DOLLARS)
 
 
 def http_json(url: str, timeout: int = 8):
@@ -281,7 +290,7 @@ def build_candidates(rows):
         viable = []
         for s in pool:
             debit = max(0.01, float(long_c.get("mark") or 0) - float(s.get("mark") or 0))
-            max_loss = debit * 100
+            max_loss = estimate_structure_risk('debit', risk_cap=risk_cap_dollars(), debit=debit)['max_loss']
             spread_bps = two_leg_spread_bps(long_c, s, debit)
             if max_loss <= risk_cap_dollars() and debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
                 viable.append(s)
@@ -297,7 +306,7 @@ def build_candidates(rows):
         for l in pool:
             credit = max(0.01, float(short_p.get("mark") or 0) - float(l.get("mark") or 0))
             width = abs(float(short_p["strike"]) - float(l["strike"]))
-            max_loss = (width - credit) * 100
+            max_loss = estimate_structure_risk('credit', risk_cap=risk_cap_dollars(), width=width, credit=credit)['max_loss']
             spread_bps = two_leg_spread_bps(short_p, l, credit)
             if max_loss <= risk_cap_dollars() and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
                 viable.append(l)
@@ -323,7 +332,7 @@ def build_candidates(rows):
             for lp in sorted(pwing, key=lambda r: abs((p["strike"] - r["strike"]) - 5))[:4]:
                 credit = max(0.01, float(p.get("mark") or 0) + float(c.get("mark") or 0) - float(lp.get("mark") or 0) - float(lc.get("mark") or 0))
                 wing = min(abs(float(p["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(c["strike"])))
-                max_loss = (wing - credit) * 100
+                max_loss = estimate_structure_risk('condor', risk_cap=risk_cap_dollars(), wing=wing, credit=credit)['max_loss']
                 spread_bps = (sum((l.get("ask") - l.get("bid")) for l in [p, lp, c, lc]) / max(0.01, credit)) * 10000.0
                 ok = max_loss <= risk_cap_dollars() and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
                 if not ok:
@@ -560,7 +569,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         long_c, short_c = legs
         debit = max(0.01, float(long_c["mark"]) - float(short_c["mark"]))
         width = abs(float(short_c["strike"]) - float(long_c["strike"]))
-        max_loss = debit * 100
+        max_loss = estimate_structure_risk('debit', risk_cap=risk_cap_dollars(), debit=debit)['max_loss']
         be = float(long_c["strike"]) + debit
         breakevens = [be]
         expected_fit = (hi is not None and be <= hi)
@@ -581,7 +590,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         short_p, long_p = legs
         credit = max(0.01, float(short_p["mark"]) - float(long_p["mark"]))
         width = abs(float(short_p["strike"]) - float(long_p["strike"]))
-        max_loss = (width - credit) * 100
+        max_loss = estimate_structure_risk('credit', risk_cap=risk_cap_dollars(), width=width, credit=credit)['max_loss']
         be = float(short_p["strike"]) - credit
         breakevens = [be]
         expected_fit = (lo is not None and be <= spot and be >= lo - em * 0.5)
@@ -602,7 +611,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         sp, lp, sc, lc = legs
         credit = max(0.01, float(sp["mark"]) + float(sc["mark"]) - float(lp["mark"]) - float(lc["mark"]))
         wing = min(abs(float(sp["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(sc["strike"])))
-        max_loss = (wing - credit) * 100
+        max_loss = estimate_structure_risk('condor', risk_cap=risk_cap_dollars(), wing=wing, credit=credit)['max_loss']
         be_low = float(sp["strike"]) - credit
         be_high = float(sc["strike"]) + credit
         breakevens = [be_low, be_high]

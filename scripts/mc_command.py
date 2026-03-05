@@ -22,6 +22,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from ak_system.risk.estimator import estimate_structure_risk
+
 LOG_PATH = ROOT / "snapshots" / "mc_runs.jsonl"
 
 
@@ -254,6 +260,17 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     candidates = tb.get("Candidates", []) or []
     top = candidates[0] if candidates else {}
 
+    rf = tb.get("riskFramework") or {}
+    risk_cap = rf.get("maxRiskDollars")
+    top_max_loss = top.get("maxLossPerContract")
+    est_input_max_loss = float(top_max_loss) if isinstance(top_max_loss, (int, float)) else 0.0
+    est_input_risk_cap = float(risk_cap) if isinstance(risk_cap, (int, float)) else 0.0
+    risk_estimator = estimate_structure_risk(
+        (top.get("type") or "unknown"),
+        risk_cap=est_input_risk_cap,
+        max_loss=est_input_max_loss,
+    )
+
     symbols_with_data = None
     dxlink_partial = False
     if live is not None:
@@ -397,6 +414,10 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         mc_ready = False
         mc_rule_failures.append("edge_not_explainable_tiered")
 
+    if est_input_risk_cap > 0 and risk_estimator.get("feasible_under_cap") is not True:
+        mc_ready = False
+        mc_rule_failures.append("risk_cap_exceeded_estimator")
+
     if mc_provenance.get("counts_consistent") is not True:
         mc_ready = False
         mc_rule_failures.append("path_count_mismatch")
@@ -474,6 +495,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "final_decision": final_decision,
         "action_state": action_state,
         "missing_required": missing_required,
+        "risk_estimator": risk_estimator,
         "trade_ready_rule": {
             "r_structural": r_unit,
             "r_structural_source": r_unit_source,
@@ -515,6 +537,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     out["spotIntegrity"] = out["spot_integrity"]
     out["mcProvenance"] = out["mc_provenance"]
     out["tradeReadyRule"] = out["trade_ready_rule"]
+    out["riskEstimator"] = out["risk_estimator"]
     return out
 
 
