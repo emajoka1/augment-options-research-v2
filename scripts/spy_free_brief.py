@@ -18,6 +18,9 @@ MULTI_LEG_SPREAD_PCT_THRESHOLD = float(os.environ.get("SPY_MULTI_LEG_MAX_SPREAD_
 ACCOUNT_SIZE = float(os.environ.get("SPY_ACCOUNT_SIZE", "10000"))
 RISK_PCT = float(os.environ.get("SPY_RISK_PCT", "0.025"))
 MAX_RISK_DOLLARS = float(os.environ.get("SPY_MAX_RISK_DOLLARS", "250"))
+MIN_DEBIT = float(os.environ.get("SPY_MIN_DEBIT", "0.05"))
+MIN_CREDIT = float(os.environ.get("SPY_MIN_CREDIT", "0.05"))
+MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "25"))
 
 
 def http_json(url: str, timeout: int = 8):
@@ -532,7 +535,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         breakevens = [be]
         expected_fit = (hi is not None and be <= hi)
         spread_multi = ((long_c.get("ask") - long_c.get("bid")) + (short_c.get("ask") - short_c.get("bid"))) / max(0.01, debit)
-        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD
+        spread_bps = spread_multi * 10000.0
+        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD and spread_bps <= MAX_SPREAD_BPS
         ticket = {
             "legs": [f"Buy {long_c['symbol']}", f"Sell {short_c['symbol']}"],
             "expiry": long_c["expiry"],
@@ -552,7 +556,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         breakevens = [be]
         expected_fit = (lo is not None and be <= spot and be >= lo - em * 0.5)
         spread_multi = ((short_p.get("ask") - short_p.get("bid")) + (long_p.get("ask") - long_p.get("bid"))) / max(0.01, credit)
-        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD
+        spread_bps = spread_multi * 10000.0
+        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD and spread_bps <= MAX_SPREAD_BPS
         ticket = {
             "legs": [f"Sell {short_p['symbol']}", f"Buy {long_p['symbol']}"],
             "expiry": short_p["expiry"],
@@ -573,7 +578,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         breakevens = [be_low, be_high]
         expected_fit = (lo is not None and hi is not None and be_low <= lo and be_high >= hi)
         spread_multi = sum((l.get("ask") - l.get("bid")) for l in [sp, lp, sc, lc]) / max(0.01, credit)
-        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD
+        spread_bps = spread_multi * 10000.0
+        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD and spread_bps <= MAX_SPREAD_BPS
         ticket = {
             "legs": [f"Sell {sp['symbol']}", f"Buy {lp['symbol']}", f"Sell {sc['symbol']}", f"Buy {lc['symbol']}"],
             "expiry": sp["expiry"],
@@ -594,7 +600,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
     score = score_components({"type": candidate_type, "maxLoss": max_loss, "breakevens": breakevens}, context, vol, exec_ok, event_ok)
 
     why = [
-        f"Execution: spread_pct_multi={round(spread_multi*100,2)}% threshold<{MULTI_LEG_SPREAD_PCT_THRESHOLD*100:.2f}% => {'Accept' if exec_ok else 'Reject'}",
+        f"Execution: spread_pct_multi={round(spread_multi*100,2)}% threshold<{MULTI_LEG_SPREAD_PCT_THRESHOLD*100:.2f}% | spread_bps={round(spread_bps,1)} max_bps<={MAX_SPREAD_BPS} => {'Accept' if exec_ok else 'Reject'}",
         f"Vol Edge: ivCurrent={round(vol.get('ivCurrent') or 0,4)} rv10={round(context['realizedVol'].get('rv10') or 0,4)} rv20={round(context['realizedVol'].get('rv20') or 0,4)} => {vol.get('volLabel')}",
         f"ExpectedMove: em={round(em,2) if em else None} bounds=[{round(lo,2) if lo else None},{round(hi,2) if hi else None}] breakevens={','.join(str(round(x,2)) for x in breakevens)} => {'fit' if expected_fit else 'no_fit'}",
     ]
@@ -611,6 +617,16 @@ def build_trade(candidate_type, legs, spot, vol, context):
         gates.append("score_below_70")
     if ticket["positionSizeContracts"] <= 0:
         gates.append("SIZE_TOO_LARGE")
+
+    # Hard constraints for executable candidates.
+    if max_loss > MAX_RISK_DOLLARS:
+        gates.append("risk_cap_exceeded")
+    if candidate_type == "debit" and debit < MIN_DEBIT:
+        gates.append("min_debit_not_met")
+    if candidate_type in ("credit", "condor") and credit < MIN_CREDIT:
+        gates.append("min_credit_not_met")
+    if spread_bps > MAX_SPREAD_BPS:
+        gates.append("spread_bps_exceeded")
 
     if gates:
         decision = "PASS"
@@ -702,12 +718,18 @@ def main():
     if context["realizedVol"].get("rv10") is None and context["realizedVol"].get("rv20") is None:
         mandatory_missing.append("realized_vol")
 
+    no_candidates_reason = None
+    constraint_gates = {"risk_cap_exceeded", "min_debit_not_met", "min_credit_not_met", "spread_bps_exceeded", "SIZE_TOO_LARGE"}
+
     if mandatory_missing:
         final_decision = "NO TRADE"
     elif not analyses:
         final_decision = "PASS"
+        no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
     else:
         final_decision = analyses[0]["decision"]
+        if all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
+            no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
 
     output = {
         "brief_meta": {
@@ -726,7 +748,8 @@ def main():
             "Volatility State": vol,
             "Candidates": analyses,
             "Final Decision": final_decision,
-            "DefaultBias": "NO TRADE",
+            "NoCandidatesReason": no_candidates_reason,
+            "DefaultBias": "NO TRADE", 
             "missingRequiredData": mandatory_missing,
             "executionPlan": {
                 "fillMethod": "Start at mid, improve by $0.01 increments, max chase = $0.05 from mid",
