@@ -416,13 +416,15 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     else:
         action_state = "WATCH"
 
-    return {
+    trace_ids = {
+        "snapshot_id": snapshot_id,
+        "brief_id": brief_id,
+        "mc_id": mc_id,
+    }
+
+    out = {
         "timestamp": _now_iso(),
-        "trace_ids": {
-            "snapshot_id": snapshot_id,
-            "brief_id": brief_id,
-            "mc_id": mc_id,
-        },
+        "trace_ids": trace_ids,
         "data_status": data_status,
         "symbols_with_data": symbols_with_data,
         "data_source": data_source,
@@ -469,6 +471,13 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         },
         "raw": brief,
     }
+
+    # Backward-compat aliases for legacy consumers.
+    out["traceIds"] = trace_ids
+    out["spotIntegrity"] = out["spot_integrity"]
+    out["mcProvenance"] = out["mc_provenance"]
+    out["tradeReadyRule"] = out["trade_ready_rule"]
+    return out
 
 
 def append_log(entry: Dict[str, Any]) -> None:
