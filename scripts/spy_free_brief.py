@@ -265,23 +265,44 @@ def expected_move(spot, iv, dte):
 
 def build_candidates(rows):
     liquid = [r for r in rows if r.get("liquid")]
-    # debit
+
+    def two_leg_spread_bps(a, b, denom):
+        return (((a.get("ask") - a.get("bid")) + (b.get("ask") - b.get("bid")))/max(0.01, denom))*10000.0
+
+    # debit (risk-cap aware)
     long_c = choose_leg(liquid, "C", 5, 14, 0.35, 0.45) or choose_leg(liquid, "C", 5, 14, 0.30, 0.55)
     short_c = None
     if long_c:
         pool = [r for r in liquid if r["side"] == "C" and r["expiry"] == long_c["expiry"] and r["strike"] > long_c["strike"]]
-        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
-        short_c = pool[0] if pool else None
+        viable = []
+        for s in pool:
+            debit = max(0.01, float(long_c.get("mark") or 0) - float(s.get("mark") or 0))
+            max_loss = debit * 100
+            spread_bps = two_leg_spread_bps(long_c, s, debit)
+            if max_loss <= MAX_RISK_DOLLARS and debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
+                viable.append(s)
+        target_pool = viable if viable else pool
+        target_pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
+        short_c = target_pool[0] if target_pool else None
 
-    # credit put
+    # credit put (risk-cap aware)
     short_p = choose_leg(liquid, "P", 7, 35, 0.20, 0.30) or choose_leg(liquid, "P", 7, 35, 0.15, 0.35)
     long_p = None
     if short_p:
         pool = [r for r in liquid if r["side"] == "P" and r["expiry"] == short_p["expiry"] and r["strike"] < short_p["strike"]]
-        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
-        long_p = pool[0] if pool else None
+        viable = []
+        for l in pool:
+            credit = max(0.01, float(short_p.get("mark") or 0) - float(l.get("mark") or 0))
+            width = abs(float(short_p["strike"]) - float(l["strike"]))
+            max_loss = (width - credit) * 100
+            spread_bps = two_leg_spread_bps(short_p, l, credit)
+            if max_loss <= MAX_RISK_DOLLARS and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
+                viable.append(l)
+        target_pool = viable if viable else pool
+        target_pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
+        long_p = target_pool[0] if target_pool else None
 
-    # condor paired by expiry
+    # condor paired by expiry (risk-cap aware width/credit)
     short_c_ic = short_p_ic = long_c_ic = long_p_ic = None
     expiries = sorted({r["expiry"] for r in liquid if 5 <= (r.get("dte") or 999) <= 30})
     best = None
@@ -296,11 +317,16 @@ def build_candidates(rows):
         pwing = [r for r in rows if r["expiry"] == exp and r["side"] == "P" and r["strike"] < p["strike"] and r.get("mark") not in (None, 0)]
         if not cwing or not pwing:
             continue
-        lc = sorted(cwing, key=lambda r: abs((r["strike"] - c["strike"]) - 5))[0]
-        lp = sorted(pwing, key=lambda r: abs((p["strike"] - r["strike"]) - 5))[0]
-        score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18)
-        if best is None or score < best[0]:
-            best = (score, c, p, lc, lp)
+        for lc in sorted(cwing, key=lambda r: abs((r["strike"] - c["strike"]) - 5))[:4]:
+            for lp in sorted(pwing, key=lambda r: abs((p["strike"] - r["strike"]) - 5))[:4]:
+                credit = max(0.01, float(p.get("mark") or 0) + float(c.get("mark") or 0) - float(lp.get("mark") or 0) - float(lc.get("mark") or 0))
+                wing = min(abs(float(p["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(c["strike"])))
+                max_loss = (wing - credit) * 100
+                spread_bps = (sum((l.get("ask") - l.get("bid")) for l in [p, lp, c, lc]) / max(0.01, credit)) * 10000.0
+                ok = max_loss <= MAX_RISK_DOLLARS and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
+                score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18) + (0 if ok else 1)
+                if best is None or score < best[0]:
+                    best = (score, c, p, lc, lp)
     if best:
         _, short_c_ic, short_p_ic, long_c_ic, long_p_ic = best
 
@@ -708,6 +734,41 @@ def main():
     analyses = [a for a in analyses if a is not None]
     analyses.sort(key=lambda x: x["score"]["Total"], reverse=True)
 
+    # Always provide top-3 view (even if PASS) with explicit fail reasons.
+    for t in ["debit", "credit", "condor"]:
+        if not any(a.get("type") == t for a in analyses):
+            analyses.append({
+                "type": t,
+                "decision": "PASS",
+                "score": {"Total": 0},
+                "ticket": None,
+                "gateFailures": ["NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."],
+                "whys": [],
+                "counterfactuals": {},
+                "maxLossPerContract": None,
+            })
+    analyses.sort(key=lambda x: x.get("score", {}).get("Total", 0), reverse=True)
+    analyses = analyses[:3]
+
+    def near_miss(a):
+        gf = a.get("gateFailures") or []
+        if "risk_cap_exceeded" in gf:
+            return "1 strike farther OTM OR reduce width"
+        if "spread_bps_exceeded" in gf:
+            return "needs tighter spread (~+3% net credit/debit efficiency)"
+        if "SIZE_TOO_LARGE" in gf:
+            return "DTE+2 or narrower width to reduce max loss"
+        if "expected_move_mismatch" in gf:
+            return "DTE+2 or shift strikes 1 step"
+        return "improve credit/debit by ~3% or shift 1 strike"
+
+    closest_near_miss = {
+        "type": analyses[0].get("type") if analyses else None,
+        "score": analyses[0].get("score", {}).get("Total") if analyses else None,
+        "gateFailures": analyses[0].get("gateFailures") if analyses else [],
+        "flipHint": near_miss(analyses[0]) if analyses else None,
+    }
+
     mandatory_missing = []
     if not spot:
         mandatory_missing.append("spot")
@@ -728,7 +789,9 @@ def main():
         no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
     else:
         final_decision = analyses[0]["decision"]
-        if all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
+        if all(any("NO_CANDIDATES:" in g for g in (a.get("gateFailures") or [])) for a in analyses):
+            no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+        elif all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
             no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
 
     output = {
@@ -747,6 +810,7 @@ def main():
             "Regime": context["regime"],
             "Volatility State": vol,
             "Candidates": analyses,
+            "ClosestNearMiss": closest_near_miss,
             "Final Decision": final_decision,
             "NoCandidatesReason": no_candidates_reason,
             "DefaultBias": "NO TRADE", 
