@@ -23,6 +23,10 @@ MIN_CREDIT = float(os.environ.get("SPY_MIN_CREDIT", "0.05"))
 MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "25"))
 
 
+def risk_cap_dollars() -> float:
+    return MAX_RISK_DOLLARS if MAX_RISK_DOLLARS > 0 else (ACCOUNT_SIZE * RISK_PCT)
+
+
 def http_json(url: str, timeout: int = 8):
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req, timeout=timeout) as r:
@@ -253,7 +257,7 @@ def choose_leg(rows, side, dte_lo, dte_hi, d_lo, d_hi):
 def contracts_for_risk(max_loss):
     if not max_loss or max_loss <= 0:
         return 0
-    max_risk_dollars = MAX_RISK_DOLLARS if MAX_RISK_DOLLARS > 0 else (ACCOUNT_SIZE * RISK_PCT)
+    max_risk_dollars = risk_cap_dollars()
     return int(max_risk_dollars // max_loss)
 
 
@@ -279,11 +283,10 @@ def build_candidates(rows):
             debit = max(0.01, float(long_c.get("mark") or 0) - float(s.get("mark") or 0))
             max_loss = debit * 100
             spread_bps = two_leg_spread_bps(long_c, s, debit)
-            if max_loss <= MAX_RISK_DOLLARS and debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
+            if max_loss <= risk_cap_dollars() and debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
                 viable.append(s)
-        target_pool = viable if viable else pool
-        target_pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
-        short_c = target_pool[0] if target_pool else None
+        viable.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
+        short_c = viable[0] if viable else None
 
     # credit put (risk-cap aware)
     short_p = choose_leg(liquid, "P", 7, 35, 0.20, 0.30) or choose_leg(liquid, "P", 7, 35, 0.15, 0.35)
@@ -296,11 +299,10 @@ def build_candidates(rows):
             width = abs(float(short_p["strike"]) - float(l["strike"]))
             max_loss = (width - credit) * 100
             spread_bps = two_leg_spread_bps(short_p, l, credit)
-            if max_loss <= MAX_RISK_DOLLARS and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
+            if max_loss <= risk_cap_dollars() and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
                 viable.append(l)
-        target_pool = viable if viable else pool
-        target_pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
-        long_p = target_pool[0] if target_pool else None
+        viable.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
+        long_p = viable[0] if viable else None
 
     # condor paired by expiry (risk-cap aware width/credit)
     short_c_ic = short_p_ic = long_c_ic = long_p_ic = None
@@ -323,8 +325,10 @@ def build_candidates(rows):
                 wing = min(abs(float(p["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(c["strike"])))
                 max_loss = (wing - credit) * 100
                 spread_bps = (sum((l.get("ask") - l.get("bid")) for l in [p, lp, c, lc]) / max(0.01, credit)) * 10000.0
-                ok = max_loss <= MAX_RISK_DOLLARS and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
-                score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18) + (0 if ok else 1)
+                ok = max_loss <= risk_cap_dollars() and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
+                if not ok:
+                    continue
+                score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18)
                 if best is None or score < best[0]:
                     best = (score, c, p, lc, lp)
     if best:
@@ -645,7 +649,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         gates.append("SIZE_TOO_LARGE")
 
     # Hard constraints for executable candidates.
-    if max_loss > MAX_RISK_DOLLARS:
+    if max_loss > risk_cap_dollars():
         gates.append("risk_cap_exceeded")
     if candidate_type == "debit" and debit < MIN_DEBIT:
         gates.append("min_debit_not_met")
@@ -822,7 +826,7 @@ def main():
             "riskFramework": {
                 "accountSize": ACCOUNT_SIZE,
                 "maxRiskPct": RISK_PCT,
-                "maxRiskDollars": round(MAX_RISK_DOLLARS if MAX_RISK_DOLLARS > 0 else (ACCOUNT_SIZE * RISK_PCT), 2),
+                "maxRiskDollars": round(risk_cap_dollars(), 2),
             },
         }
     }
