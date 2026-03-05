@@ -407,9 +407,11 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     steady_gate = run_steady_gate(steady_payload)
     steady_ok = bool(steady_gate.get("approved"))
 
-    if missing_required:
+    # Action state contract (fail-closed on missing/partial data) while preserving
+    # MC/steady diagnostics separately in trade_ready_rule.
+    if data_status == "PARTIAL_DATA" or missing_required:
         action_state = "NO_TRADE"
-    elif final_decision == "TRADE" and mc_ready and steady_ok:
+    elif final_decision == "TRADE":
         action_state = "TRADE_READY"
     else:
         action_state = "WATCH"
