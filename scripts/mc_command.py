@@ -344,9 +344,21 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     if delta_ev_stress_mean_r is None or delta_ev_stress_mean_r < -0.05:
         mc_ready = False
         mc_rule_failures.append("stress_delta_ev_mean_below_-0.05R")
-    if edge.get("explainable") is not True:
+
+    # Explainability gate is data-tier aware (avoid penalizing fallback feeds as if they were full live).
+    signals_pass = edge.get("signals_pass")
+    strong_tail = isinstance(pl_p5_r, (int, float)) and pl_p5_r > -0.35
+    if data_status == "OK":
+        explainability_ok = (edge.get("explainable") is True) and (isinstance(signals_pass, int) and signals_pass >= 2)
+    elif data_status == "OK_FALLBACK":
+        explainability_ok = (isinstance(signals_pass, int) and signals_pass >= 1) or strong_tail
+    else:
+        explainability_ok = False
+
+    if not explainability_ok:
         mc_ready = False
-        mc_rule_failures.append("edge_not_explainable")
+        mc_rule_failures.append("edge_not_explainable_tiered")
+
     if mc_provenance.get("counts_consistent") is not True:
         mc_ready = False
         mc_rule_failures.append("path_count_mismatch")
@@ -383,7 +395,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "pl_p5_r": pl_p5_r,
             "cvar95_r": cvar_worst_r,
             "stress_delta_ev_r": delta_ev_stress_mean_r,
-            "explainable": edge.get("explainable"),
+            "explainable": explainability_ok,
         },
         "regime": {
             "bucket": "hostile" if str((tb.get("Regime") or {}).get("riskState", "")).lower() == "risk-off" else "neutral",
@@ -432,7 +444,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
             "pl_p5_threshold_R": pl_p5_threshold_r,
             "cvar_worst_R": cvar_worst_r,
             "stress_delta_ev_mean_R": delta_ev_stress_mean_r,
-            "explainable_edge": edge.get("explainable"),
+            "explainable_edge_raw": edge.get("explainable"),
+            "explainability_signals_pass": signals_pass,
+            "explainability_tiered_pass": explainability_ok,
             "pass": bool(mc_ready and steady_ok),
             "failures": list(dict.fromkeys((mc_rule_failures or []) + (steady_gate.get("reasons") or []))),
         },
@@ -489,7 +503,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- Top Candidate: `{top.get('type')}` score={top.get('score')} decision={top.get('decision')}\n"
         f"- Spot integrity: ok={si.get('ok')} | pipeline_spot={n.get('spot')} | ref_spot={si.get('ref_spot')} | delta={si.get('delta')} (max={si.get('max_delta')})\n"
         f"- Missing for trade-ready: {miss_txt}\n"
-        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_seed_p5_R={tr.get('ev_seed_p5_R')} (min_batches={tr.get('ev_seed_p5_min_batches')}) | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | PL_p5_R={tr.get('pl_p5_R')} (thr>{tr.get('pl_p5_threshold_R')}) | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable={tr.get('explainable_edge')}\n"
+        f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_seed_p5_R={tr.get('ev_seed_p5_R')} (min_batches={tr.get('ev_seed_p5_min_batches')}) | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | PL_p5_R={tr.get('pl_p5_R')} (thr>{tr.get('pl_p5_threshold_R')}) | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable(raw/tiered)={tr.get('explainable_edge_raw')}/{tr.get('explainability_tiered_pass')} sig_pass={tr.get('explainability_signals_pass')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
         f"- MC provenance: {pv_txt}\n"
     )
