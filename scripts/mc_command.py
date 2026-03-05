@@ -132,6 +132,39 @@ def latest_options_mc(max_age_minutes: int = 120) -> tuple[Optional[Dict[str, An
         return None, src, stale
 
 
+
+
+def validate_mc_source_provenance(mc: Dict[str, Any]) -> tuple[bool, list[str]]:
+    required = ["generated_at", "config_hash", "n_batches", "paths_per_batch", "n_total_paths", "assumptions", "base_seed", "crn_scope"]
+    missing = [k for k in required if k not in mc]
+    assumptions = mc.get("assumptions") or {}
+    if "n_paths" not in assumptions:
+        missing.append("assumptions.n_paths")
+
+    errors = []
+    if missing:
+        errors.append("missing:" + ",".join(missing))
+
+    ch = mc.get("config_hash")
+    if not isinstance(ch, str) or len(ch) != 64:
+        errors.append("invalid:config_hash")
+
+    ga = mc.get("generated_at")
+    if not isinstance(ga, str) or not ga:
+        errors.append("invalid:generated_at")
+
+    nb = mc.get("n_batches")
+    ppb = mc.get("paths_per_batch")
+    nt = mc.get("n_total_paths")
+    anp = assumptions.get("n_paths")
+    if not all(isinstance(x, int) for x in [nb, ppb, nt, anp]):
+        errors.append("invalid:path_counts_type")
+    else:
+        if nt != nb * ppb or nt != anp:
+            errors.append("invalid:path_counts_consistency")
+
+    return len(errors) == 0, errors
+
 def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
     """Derive a stable, structure-based risk unit (R).
 
@@ -271,10 +304,13 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         and n_total_paths == computed_n_total_paths == assumptions_n_paths
     )
 
+    provenance_ok, provenance_errors = validate_mc_source_provenance(mc)
+
     mc_provenance = {
         "options_mc_source_mode": "run_local_fresh" if mc_source_stale is False else "fallback_latest",
         "options_mc_source_file": mc_source_file,
         "generated_at": mc.get("generated_at"),
+        "config_hash": mc.get("config_hash"),
         "model": assumptions.get("model"),
         "n_batches": n_batches,
         "paths_per_batch": paths_per_batch,
@@ -283,8 +319,10 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "assumptions_n_paths": assumptions_n_paths,
         "counts_consistent": counts_consistent,
         "source_stale": mc_source_stale,
-        "base_seed": randomness.get("base_seed"),
-        "crn_scope": randomness.get("crn_scope"),
+        "base_seed": mc.get("base_seed") if mc.get("base_seed") is not None else randomness.get("base_seed"),
+        "crn_scope": mc.get("crn_scope") if mc.get("crn_scope") is not None else randomness.get("crn_scope"),
+        "provenance_ok": provenance_ok,
+        "provenance_errors": provenance_errors,
     }
 
     ev_seed_p5_r = None
@@ -541,6 +579,8 @@ def main() -> int:
         if not trace_ids.get("snapshot_id"):
             raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
         mc_provenance = normalized.get("mc_provenance") or {}
+        if mc_provenance.get("provenance_ok") is not True:
+            raise RuntimeError("Invalid options-mc provenance: " + ",".join(mc_provenance.get("provenance_errors") or []))
         if mc_provenance.get("counts_consistent") is not True:
             raise RuntimeError(
                 "Inconsistent path counts in options-mc source "

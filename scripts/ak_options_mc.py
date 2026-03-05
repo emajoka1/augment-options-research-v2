@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +32,69 @@ from ak_system.mc_options.strategy import (
 )
 from ak_system.regime import classify_regime_rule_based
 
+
+
+
+def build_provenance(args, strategy, n_batches: int, n_paths_batch: int, n_total_paths: int) -> dict:
+    config = {
+        "model": args.model,
+        "example": args.example,
+        "spot": float(args.spot),
+        "r": float(args.r),
+        "q": float(args.q),
+        "expiry_days": float(args.expiry_days),
+        "dt_days": float(args.dt_days),
+        "n_batches": int(n_batches),
+        "paths_per_batch": int(n_paths_batch),
+        "n_total_paths": int(n_total_paths),
+        "assumptions_n_paths": int(n_total_paths),
+        "seed": int(args.seed),
+        "base_seed": int(args.seed),
+        "crn_scope": "same_model_same_structure_friction_only",
+        "strategy": strategy.name,
+        "legs": [(leg.side, leg.option_type, float(leg.strike), int(leg.qty), float(leg.expiry_years or 0.0)) for leg in strategy.legs],
+        "spread_bps": float(args.spread_bps),
+        "slippage_bps": float(args.slippage_bps),
+        "partial_fill_prob": float(args.partial_fill_prob),
+        "event_risk_high": bool(args.event_risk_high),
+    }
+    blob = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "config_hash": hashlib.sha256(blob.encode("utf-8")).hexdigest(),
+        "n_batches": int(n_batches),
+        "paths_per_batch": int(n_paths_batch),
+        "n_total_paths": int(n_total_paths),
+        "assumptions_n_paths": int(n_total_paths),
+        "base_seed": int(args.seed),
+        "crn_scope": "same_model_same_structure_friction_only",
+    }
+
+
+def validate_provenance_payload(payload: dict) -> tuple[bool, list[str]]:
+    req = ["generated_at", "config_hash", "n_batches", "paths_per_batch", "n_total_paths", "assumptions", "base_seed", "crn_scope"]
+    missing = [k for k in req if k not in payload]
+    if "assumptions" in payload and "n_paths" not in (payload.get("assumptions") or {}):
+        missing.append("assumptions.n_paths")
+    errors = []
+    if missing:
+        errors.append("missing:" + ",".join(missing))
+    ch = payload.get("config_hash")
+    if not isinstance(ch, str) or len(ch) != 64:
+        errors.append("invalid:config_hash")
+    ga = payload.get("generated_at")
+    if not isinstance(ga, str) or not ga:
+        errors.append("invalid:generated_at")
+    nb = payload.get("n_batches")
+    ppb = payload.get("paths_per_batch")
+    nt = payload.get("n_total_paths")
+    anp = (payload.get("assumptions") or {}).get("n_paths")
+    if not all(isinstance(x, int) for x in [nb, ppb, nt, anp]):
+        errors.append("invalid:path_counts_type")
+    else:
+        if nt != nb * ppb or nt != anp:
+            errors.append("invalid:path_counts_consistency")
+    return len(errors) == 0, errors
 
 def build_strategy(example: str, spot: float, expiry_years: float):
     k = round(spot)
@@ -357,7 +422,16 @@ def main():
         and attribution["explainable"]
     )
 
+    provenance = build_provenance(args, strategy, n_batches, n_paths_batch, n_total_paths)
+
     payload = {
+        "generated_at": provenance["generated_at"],
+        "config_hash": provenance["config_hash"],
+        "n_batches": provenance["n_batches"],
+        "paths_per_batch": provenance["paths_per_batch"],
+        "n_total_paths": provenance["n_total_paths"],
+        "base_seed": provenance["base_seed"],
+        "crn_scope": provenance["crn_scope"],
         "assumptions": {
             "model": args.model,
             "spot": spot,
@@ -410,6 +484,10 @@ def main():
         "edge_attribution": attribution,
         "gates": gate,
     }
+
+    ok, errors = validate_provenance_payload(payload)
+    if not ok:
+        raise RuntimeError("options-mc provenance validation failed: " + "; ".join(errors))
 
     j, m = write_report_json_md(paths.kb_experiments, payload)
     print(
