@@ -2,7 +2,7 @@
 
 # Proactive integrity checks (market pipeline)
 
-- Verify latest `mc_command --json` has:
+- Verify latest `python3 scripts/mc_command.py --json` has:
   - `spot_integrity.ok == true`
   - `mc_provenance.source_stale == false`
   - `mc_provenance.counts_consistent == true`
