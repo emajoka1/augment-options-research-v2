@@ -18,6 +18,7 @@ import uuid
 from urllib.request import Request, urlopen
 from typing import Tuple
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -29,6 +30,32 @@ if str(SRC) not in sys.path:
 from ak_system.risk.estimator import estimate_structure_risk
 
 LOG_PATH = ROOT / "snapshots" / "mc_runs.jsonl"
+
+
+def _freshness_sla_seconds() -> int:
+    try:
+        v = int(os.getenv("MC_INPUT_MAX_AGE_SECONDS", "7200"))
+        return max(60, v)
+    except Exception:
+        return 7200
+
+
+def _parse_iso_utc(ts: Any) -> Optional[datetime]:
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _input_freshness(ts: Any, now: datetime, max_age_seconds: int) -> Dict[str, Any]:
+    dt = _parse_iso_utc(ts)
+    if dt is None:
+        return {"timestamp": ts, "age_seconds": None, "max_age_seconds": max_age_seconds, "fresh": False, "reason": "missing_timestamp"}
+    age = max(0, int((now - dt).total_seconds()))
+    fresh = age <= max_age_seconds
+    return {"timestamp": ts, "age_seconds": age, "max_age_seconds": max_age_seconds, "fresh": fresh, "reason": None if fresh else "stale_input"}
 
 
 def _now_iso() -> str:
@@ -261,9 +288,10 @@ def run_steady_gate(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"decision": "PASS", "approved": False, "reasons": ["steady_gate_parse_failed"]}
 
 
-def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str, Any]:
+def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any], freshness_sla_seconds: Optional[int] = None) -> Dict[str, Any]:
     tb = brief.get("TRADE BRIEF", {})
     brief_meta = brief.get("brief_meta") or {}
+    freshness_sla_seconds = int(freshness_sla_seconds or _freshness_sla_seconds())
     mc_id = f"mc_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
     snapshot_id = ((live or {}).get("snapshotId") or (live or {}).get("snapshot_id")) if isinstance(live, dict) else None
     brief_id = brief_meta.get("brief_id")
@@ -354,6 +382,17 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         "provenance_errors": provenance_errors,
     }
 
+    now_utc = datetime.now(timezone.utc)
+    freshness_inputs = {
+        "options_mc_generated_at": _input_freshness(mc.get("generated_at"), now_utc, freshness_sla_seconds),
+    }
+    freshness_pass = all((v.get("fresh") is True) for v in freshness_inputs.values()) and (mc_source_stale is False)
+    freshness = {
+        "max_age_seconds": freshness_sla_seconds,
+        "pass": freshness_pass,
+        "inputs": freshness_inputs,
+    }
+
     ev_seed_p5_r = None
     ev_seed_p5_min_batches = 5
     ev_mean_r = None
@@ -436,6 +475,9 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
     if mc_provenance.get("source_stale") is True:
         mc_ready = False
         mc_rule_failures.append("options_mc_source_stale")
+    if freshness_pass is not True:
+        mc_ready = False
+        mc_rule_failures.append("DATA_QUALITY_FAIL: stale_inputs")
 
     # Spot integrity guard: compare pipeline spot to independent reference (CBOE, fallback Yahoo).
     spot_integrity = {"ref_source": "none", "ref_spot": None, "delta": None, "max_delta": 0.5, "ok": False}
@@ -488,7 +530,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
 
     # Action state contract (fail-closed on missing/partial data) while preserving
     # MC/steady diagnostics separately in trade_ready_rule.
-    if data_status == "PARTIAL_DATA" or missing_required:
+    if data_status == "PARTIAL_DATA" or missing_required or (freshness_pass is not True):
         action_state = "NO_TRADE"
     elif final_decision == "TRADE":
         action_state = "TRADE_READY"
@@ -543,6 +585,7 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any]) -> Dict[str
         },
         "spot_integrity": spot_integrity,
         "mc_provenance": mc_provenance,
+        "freshness": freshness,
         "top_candidate": {
             "type": top.get("type"),
             "decision": top.get("decision"),
@@ -572,6 +615,7 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
     miss_txt = ", ".join(f"`{m}`" for m in missing) if missing else "none"
     top = n.get("top_candidate") or {}
     tr = n.get("trade_ready_rule") or {}
+    fr = n.get("freshness") or {}
     tr_fail = ", ".join(tr.get("failures") or []) if (tr.get("failures") or []) else "none"
     pv = n.get("mc_provenance") or {}
     ids = n.get("trace_ids") or {}
@@ -598,6 +642,8 @@ def render_markdown(n: Dict[str, Any], attempt: int, max_attempts: int) -> str:
         f"- TRADE_READY rule: pass={tr.get('pass')} | R_structural={tr.get('r_structural')} ({tr.get('r_structural_source')}) | R_minpl_debug={tr.get('r_minpl_debug')} | EV_mean_R={tr.get('ev_mean_R')} | EV_seed_p5_R={tr.get('ev_seed_p5_R')} (min_batches={tr.get('ev_seed_p5_min_batches')}) | EV_stress_mean_R={tr.get('ev_stress_mean_R')} | PL_p5_R={tr.get('pl_p5_R')} (thr>{tr.get('pl_p5_threshold_R')}) | CVaR_worst_R={tr.get('cvar_worst_R')} | StressΔEV_mean_R={tr.get('stress_delta_ev_mean_R')} | Explainable(raw/tiered)={tr.get('explainable_edge_raw')}/{tr.get('explainability_tiered_pass')} sig_pass={tr.get('explainability_signals_pass')}\n"
         f"- TRADE_READY rule failures: {tr_fail}\n"
         f"- MC provenance: {pv_txt}\n"
+        f"- Freshness SLA: pass={fr.get('pass')} | max_age_seconds={fr.get('max_age_seconds')} | inputs={fr.get('inputs')}\n"
+        + ("- Stale-data recovery: refresh upstream snapshots, regenerate options MC, then rerun `/mc` (fail-closed active).\n" if fr.get("pass") is False else "")
     )
 
 
@@ -607,6 +653,7 @@ def main() -> int:
     ap.add_argument("--retry-delay-sec", type=int, default=180)
     ap.add_argument("--skip-live", action="store_true", help="Skip node live snapshot step")
     ap.add_argument("--json", action="store_true", help="Print normalized JSON instead of markdown")
+    ap.add_argument("--freshness-sla-seconds", type=int, default=_freshness_sla_seconds(), help="Max allowed age for required input timestamps")
     args = ap.parse_args()
 
     last: Optional[Dict[str, Any]] = None
@@ -614,7 +661,7 @@ def main() -> int:
     for i in range(1, max(1, args.max_attempts) + 1):
         live = run_live_snapshot(args.skip_live)
         brief = run_brief()
-        normalized = normalize(live, brief)
+        normalized = normalize(live, brief, freshness_sla_seconds=args.freshness_sla_seconds)
         normalized["attempt"] = i
         normalized["max_attempts"] = args.max_attempts
 
