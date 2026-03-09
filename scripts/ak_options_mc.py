@@ -273,6 +273,7 @@ def main():
     p.add_argument("--partial-fill-prob", type=float, default=0.1)
     p.add_argument("--event-risk-high", action="store_true")
     p.add_argument("--force-refresh-minutes", type=float, default=30.0)
+    p.add_argument("--rv-freshness-sla-seconds", type=float, default=3600.0)
     args = p.parse_args()
 
     paths = build_paths(Path(".").resolve())
@@ -315,7 +316,20 @@ def main():
                 rv_freshness_seconds = fb_freshness
 
     rv_contract_pass = (rv10 is not None and rv20 is not None)
-    data_quality_status = "OK" if rv_contract_pass else "DATA_QUALITY_FAIL: missing_realized_vol"
+    rv_freshness_sla_seconds = max(0.0, float(args.rv_freshness_sla_seconds))
+    rv_freshness_pass = bool(rv_contract_pass and rv_freshness_seconds is not None and rv_freshness_seconds <= rv_freshness_sla_seconds)
+    rv_staleness_reason = None
+    if not rv_contract_pass:
+        rv_staleness_reason = "missing_realized_vol"
+    elif not rv_freshness_pass:
+        rv_staleness_reason = "stale_realized_vol"
+
+    if not rv_contract_pass:
+        data_quality_status = "DATA_QUALITY_FAIL: missing_realized_vol"
+    elif not rv_freshness_pass:
+        data_quality_status = "DATA_QUALITY_FAIL: stale_realized_vol"
+    else:
+        data_quality_status = "OK"
 
     strategy = build_strategy(args.example, spot, expiry_years)
     exits = default_exit_rules_for_strategy(strategy.name)
@@ -540,7 +554,7 @@ def main():
 
     explainability_signals_present = int(iv_rv_present) + int(regime_present) + int(structure_present)
     explainability_signals_pass = int(iv_rv_pass) + int(regime_pass) + int(structure_pass)
-    explainable = (explainability_signals_pass >= 2) if rv_contract_pass else False
+    explainable = (explainability_signals_pass >= 2) if (rv_contract_pass and rv_freshness_pass) else False
 
     attribution = {
         "iv_rich_vs_rv": iv_rv_gap,
@@ -554,7 +568,7 @@ def main():
             "min_signals_pass": 2,
         },
         "explainable": bool(explainable),
-        "explainable_reason": None if rv_contract_pass else "missing_realized_vol",
+        "explainable_reason": None if explainable else rv_staleness_reason,
     }
 
     gate["allow_trade"] = bool(
@@ -616,14 +630,21 @@ def main():
             "rv_window_bars": rv_window_bars,
             "rv_asof": rv_asof,
             "rv_freshness_seconds": rv_freshness_seconds,
+            "rv_freshness_sla_seconds": rv_freshness_sla_seconds,
+            "rv_freshness_pass": rv_freshness_pass,
+            "rv_staleness_reason": rv_staleness_reason,
             "jump": jump_used.__dict__ if jump_used else None,
         },
         "data_quality_status": data_quality_status,
+        "rv_freshness_sla_seconds": rv_freshness_sla_seconds,
+        "rv_freshness_pass": rv_freshness_pass,
+        "rv_staleness_reason": rv_staleness_reason,
         "telemetry": {
             "options_mc_runs_total": 1,
             "options_mc_runs_skipped_no_new_inputs": 0,
             "options_mc_runs_forced_refresh": 1 if forced_refresh else 0,
             "options_mc_rv_missing_events": 0 if rv_contract_pass else 1,
+            "options_mc_runs_rv_stale_events": 1 if (rv_contract_pass and not rv_freshness_pass) else 0,
         },
         "regime_distribution": regime_probs,
         "stress": {
