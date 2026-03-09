@@ -273,6 +273,8 @@ def main():
     p.add_argument("--partial-fill-prob", type=float, default=0.1)
     p.add_argument("--event-risk-high", action="store_true")
     p.add_argument("--force-refresh-minutes", type=float, default=30.0)
+    p.add_argument("--force-refresh", action="store_true", help="Bypass idempotency and DQ dedupe guards for a forced refresh")
+    p.add_argument("--dq-fail-dedupe-cooldown-minutes", type=float, default=30.0)
     p.add_argument("--rv-freshness-sla-seconds", type=float, default=3600.0)
     args = p.parse_args()
 
@@ -340,18 +342,49 @@ def main():
     canonical_hash = _canonical_inputs_hash(canonical_inputs)
 
     latest_payload, latest_path = _latest_options_mc_artifact(paths.kb_experiments)
-    forced_refresh = False
+    forced_refresh = bool(args.force_refresh)
     force_refresh_minutes = max(0.0, float(args.force_refresh_minutes))
+    dq_fail_dedupe_cooldown_minutes = max(0.0, float(args.dq_fail_dedupe_cooldown_minutes))
     should_skip = False
+    dq_fail_republished_after_cooldown = False
     if latest_payload and latest_path:
         latest_hash = latest_payload.get("canonical_inputs_hash")
         same_inputs = isinstance(latest_hash, str) and (latest_hash == canonical_hash)
         if same_inputs:
             age = datetime.now(timezone.utc) - datetime.fromtimestamp(latest_path.stat().st_mtime, tz=timezone.utc)
+            latest_dq_status = latest_payload.get("data_quality_status") if isinstance(latest_payload, dict) else None
+            if isinstance(latest_dq_status, str) and latest_dq_status != data_quality_status:
+                forced_refresh = True
+            if data_quality_status.startswith("DATA_QUALITY_FAIL") and not args.force_refresh:
+                dq_status_unchanged = isinstance(latest_dq_status, str) and latest_dq_status == data_quality_status
+                cooldown_elapsed = age >= timedelta(minutes=dq_fail_dedupe_cooldown_minutes) if dq_fail_dedupe_cooldown_minutes > 0 else True
+                if dq_status_unchanged and not cooldown_elapsed:
+                    print(
+                        json.dumps(
+                            {
+                                "generated_at": datetime.now(timezone.utc).isoformat(),
+                                "status": "NO_ACTION_DQ_FAIL_DUPLICATE",
+                                "data_quality_status": data_quality_status,
+                                "dedupe_window_seconds": int(dq_fail_dedupe_cooldown_minutes * 60),
+                                "prior_artifact": {
+                                    "path": str(latest_path),
+                                    "generated_at": (latest_payload or {}).get("generated_at"),
+                                    "status": (latest_payload or {}).get("status"),
+                                    "canonical_inputs_hash": (latest_payload or {}).get("canonical_inputs_hash"),
+                                },
+                            },
+                            indent=2,
+                        )
+                    )
+                    return
+                if dq_status_unchanged and cooldown_elapsed:
+                    dq_fail_republished_after_cooldown = True
+                    forced_refresh = True
+
             cadence_elapsed = age >= timedelta(minutes=force_refresh_minutes) if force_refresh_minutes > 0 else True
             if cadence_elapsed:
                 forced_refresh = True
-            else:
+            elif not forced_refresh:
                 should_skip = True
 
     if should_skip and latest_path is not None:
@@ -645,6 +678,8 @@ def main():
             "options_mc_runs_forced_refresh": 1 if forced_refresh else 0,
             "options_mc_rv_missing_events": 0 if rv_contract_pass else 1,
             "options_mc_runs_rv_stale_events": 1 if (rv_contract_pass and not rv_freshness_pass) else 0,
+            "options_mc_runs_dq_fail_deduped": 0,
+            "options_mc_runs_dq_fail_republished_after_cooldown": 1 if dq_fail_republished_after_cooldown else 0,
         },
         "regime_distribution": regime_probs,
         "stress": {

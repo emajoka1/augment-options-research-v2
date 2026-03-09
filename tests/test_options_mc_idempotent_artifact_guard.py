@@ -1,7 +1,10 @@
 import importlib.util
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+
+import numpy as np
 
 spec = importlib.util.spec_from_file_location(
     "ak_options_mc", Path(__file__).resolve().parents[1] / "scripts" / "ak_options_mc.py"
@@ -15,6 +18,11 @@ def _prep_paths(monkeypatch, tmp_path):
     out.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(ak, "build_paths", lambda _p: type("P", (), {"kb_experiments": out})())
     monkeypatch.setattr(ak, "ensure_dirs", lambda _p: None)
+    monkeypatch.setattr(
+        ak,
+        "load_local_returns_fallback",
+        lambda _root: (np.array([0.001] * 80, dtype=float), "local_fallback", datetime.now(timezone.utc).isoformat(), 10.0),
+    )
     return out
 
 
@@ -41,7 +49,7 @@ def test_identical_inputs_skip_and_reference_prior(tmp_path, monkeypatch, capsys
 def test_change_in_canonical_input_generates_full_artifact(tmp_path, monkeypatch, capsys):
     _prep_paths(monkeypatch, tmp_path)
     base_args = ["--n-batches", "1", "--paths-per-batch", "100", "--expiry-days", "1", "--dt-days", "1"]
-    first = _run(monkeypatch, capsys, base_args)
+    _run(monkeypatch, capsys, base_args)
     changed = _run(monkeypatch, capsys, [*base_args, "--spot", "701.0"])
 
     assert changed["status"] == "FULL_REFRESH"
