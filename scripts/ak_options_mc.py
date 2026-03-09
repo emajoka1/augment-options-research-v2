@@ -511,6 +511,7 @@ def main():
 
     entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
     breakevens, breakeven_reason, breakeven_solver = compute_breakevens(strategy, entry_proxy)
+    breakeven_failure_code = None if breakevens is not None else f"BREAKEVEN_SOLVER_FAIL:{breakeven_reason or 'unknown'}"
 
     regime_probs = infer_regime_distribution(args.model, spot, ivp.iv_atm, n_steps, dt, args.r, args.q, args.seed + 7)
     dominant_regime = regime_probs["dominant"]
@@ -568,7 +569,7 @@ def main():
         be_dist = min(abs(b - spot) for b in breakevens)
         structure_match = float(max(0.0, 1.0 - abs(be_dist - expected_move) / max(expected_move, 1e-6)))
     else:
-        structure_match = 0.0
+        structure_match = None
 
     # Explainability: allow fallback-driven attribution when full data is partial.
     mean_revert_prob = float(regime_probs.get("mean_revert|vol_contracting", 0.0))
@@ -579,15 +580,15 @@ def main():
     # - Structure/expected-move fit should be non-trivial
     iv_rv_present = iv_rv_gap is not None
     regime_present = np.isfinite(mean_revert_prob)
-    structure_present = np.isfinite(structure_match)
+    structure_present = isinstance(structure_match, (int, float)) and np.isfinite(structure_match)
 
     iv_rv_pass = iv_rv_present
     regime_pass = regime_present and (mean_revert_prob >= 0.20)
-    structure_pass = structure_present and (structure_match >= 0.05)
+    structure_pass = structure_present and (float(structure_match) >= 0.05)
 
     explainability_signals_present = int(iv_rv_present) + int(regime_present) + int(structure_present)
     explainability_signals_pass = int(iv_rv_pass) + int(regime_pass) + int(structure_pass)
-    explainable = (explainability_signals_pass >= 2) if (rv_contract_pass and rv_freshness_pass) else False
+    explainable = (explainability_signals_pass >= 2) if (rv_contract_pass and rv_freshness_pass and breakevens is not None) else False
 
     attribution = {
         "iv_rich_vs_rv": iv_rv_gap,
@@ -601,7 +602,7 @@ def main():
             "min_signals_pass": 2,
         },
         "explainable": bool(explainable),
-        "explainable_reason": None if explainable else rv_staleness_reason,
+        "explainable_reason": None if explainable else (rv_staleness_reason or breakeven_failure_code),
     }
 
     gate["allow_trade"] = bool(
@@ -698,7 +699,7 @@ def main():
         },
         "friction_hurdle": friction_hurdle,
         "breakevens": breakevens,
-        "breakeven_reason": breakeven_reason,
+        "breakeven_reason": breakeven_failure_code,
         "breakeven_solver": breakeven_solver,
         "edge_attribution": attribution,
         "gates": gate,

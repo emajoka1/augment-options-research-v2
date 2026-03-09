@@ -18,6 +18,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
     stress = payload.get("stress", {})
     gates = payload.get("gates", {})
     breakevens = payload.get("breakevens", [])
+    breakeven_reason = payload.get("breakeven_reason")
     edge = payload.get("edge_attribution", {})
     fh = payload.get("friction_hurdle", {})
     ms = payload.get("multi_seed_confidence", {})
@@ -42,7 +43,7 @@ def write_report_json_md(out_base: Path, payload: dict) -> tuple[Path, Path]:
 - Paths: {assumptions.get('n_paths')}
 
 ## Expected Move vs Breakevens
-- Breakevens: {breakevens}
+- Breakevens: {breakevens if breakevens is not None else breakeven_reason}
 
 ## Core Metrics (after costs)
 - EV: {metrics.get('ev'):.4f}
