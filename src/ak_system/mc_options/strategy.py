@@ -117,23 +117,70 @@ def max_profit_max_loss(strategy: StrategyDef, S_grid: np.ndarray, r: float, q: 
     return float(np.max(arr)), float(np.min(arr))
 
 
-def compute_breakevens(strategy: StrategyDef, entry_value: float) -> list[float]:
-    name = strategy.name
-    v = abs(entry_value)
-    if name == "long_straddle":
-        k = strategy.legs[0].strike
-        return [float(k - v), float(k + v)]
-    if name == "iron_fly":
-        center = [l.strike for l in strategy.legs if l.side == "short"]
-        if center:
-            k = float(center[0])
-            return [float(k - v), float(k + v)]
-    if name in {"put_debit_spread", "call_vertical", "put_vertical"} or name.endswith("_vertical"):
-        longs = [l for l in strategy.legs if l.side == "long"]
-        if longs:
-            l0 = longs[0]
-            return [float(l0.strike + v)] if l0.option_type == "call" else [float(l0.strike - v)]
-    return []
+def _terminal_value(strategy: StrategyDef, spot: float) -> float:
+    total = 0.0
+    for leg in strategy.legs:
+        intrinsic = max(spot - leg.strike, 0.0) if leg.option_type == "call" else max(leg.strike - spot, 0.0)
+        total += (1.0 if leg.side == "long" else -1.0) * leg.qty * intrinsic
+    return float(total)
+
+
+def compute_breakevens(strategy: StrategyDef, entry_value: float) -> tuple[list[float] | None, str | None, dict[str, float | int]]:
+    """Solve terminal breakevens from expiry payoff with deterministic root-bracketing.
+
+    Returns:
+      - breakevens: sorted roots or None when undefined
+      - reason: None on success; explicit reason code otherwise
+      - diagnostics: lightweight solver telemetry
+    """
+    strikes = [float(l.strike) for l in strategy.legs if np.isfinite(l.strike)]
+    if not strikes:
+        return None, "invalid_strikes", {"grid_points": 0, "sign_flips": 0}
+
+    min_k, max_k = min(strikes), max(strikes)
+    lo = max(0.01, min_k * 0.25)
+    hi = max(max_k * 2.5, lo + 1.0)
+    grid = np.linspace(lo, hi, 2001)
+
+    def f(x: float) -> float:
+        return _terminal_value(strategy, x) - float(entry_value)
+
+    vals = np.array([f(float(x)) for x in grid], dtype=float)
+    if not np.all(np.isfinite(vals)):
+        return None, "non_finite_payoff", {"grid_points": int(grid.size), "sign_flips": 0}
+
+    roots: list[float] = []
+    sign_flips = 0
+    for i in range(len(grid) - 1):
+        x0, x1 = float(grid[i]), float(grid[i + 1])
+        y0, y1 = float(vals[i]), float(vals[i + 1])
+
+        if abs(y0) <= 1e-9:
+            roots.append(x0)
+            continue
+        if y0 * y1 > 0:
+            continue
+
+        sign_flips += 1
+        a, b, fa, fb = x0, x1, y0, y1
+        for _ in range(64):
+            mid = 0.5 * (a + b)
+            fm = f(mid)
+            if abs(fm) <= 1e-9 or (b - a) <= 1e-6:
+                roots.append(mid)
+                break
+            if fa * fm <= 0:
+                b, fb = mid, fm
+            else:
+                a, fa = mid, fm
+        else:
+            return None, "solver_nonconvergence", {"grid_points": int(grid.size), "sign_flips": int(sign_flips)}
+
+    if not roots:
+        return None, "no_breakeven", {"grid_points": int(grid.size), "sign_flips": 0}
+
+    roots_sorted = sorted({round(r, 6) for r in roots})
+    return [float(r) for r in roots_sorted], None, {"grid_points": int(grid.size), "sign_flips": int(sign_flips)}
 
 
 def should_exit(

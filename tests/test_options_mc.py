@@ -152,3 +152,23 @@ def test_parse_chain_snapshot_csv(tmp_path):
     assert len(s.strikes) == 2
     assert s.expiries_days is not None
     assert s.returns is not None and len(s.returns) == 3
+
+from ak_system.mc_options.strategy import compute_breakevens, make_put_diagonal
+
+
+def test_put_diagonal_breakevens_non_empty_sorted():
+    strat = make_put_diagonal(long_strike=100, short_strike=95, front_expiry_years=7 / 365, back_expiry_years=30 / 365)
+    breakevens, reason, diag = compute_breakevens(strat, entry_value=1.8)
+    assert reason is None
+    assert breakevens is not None and len(breakevens) >= 1
+    assert breakevens == sorted(breakevens)
+    assert all(isinstance(x, float) for x in breakevens)
+    assert diag["grid_points"] > 0
+
+
+def test_non_crossing_case_returns_null_breakeven_with_reason():
+    strat = make_put_diagonal(long_strike=100, short_strike=95, front_expiry_years=7 / 365, back_expiry_years=30 / 365)
+    # Impossible to break even at expiry with this oversized debit.
+    breakevens, reason, _ = compute_breakevens(strat, entry_value=50.0)
+    assert breakevens is None
+    assert reason == "no_breakeven"

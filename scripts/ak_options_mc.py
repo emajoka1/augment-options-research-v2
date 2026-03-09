@@ -318,7 +318,7 @@ def main():
     }
 
     entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
-    breakevens = compute_breakevens(strategy, entry_proxy)
+    breakevens, breakeven_reason, breakeven_solver = compute_breakevens(strategy, entry_proxy)
 
     regime_probs = infer_regime_distribution(args.model, spot, ivp.iv_atm, n_steps, dt, args.r, args.q, args.seed + 7)
     dominant_regime = regime_probs["dominant"]
@@ -372,7 +372,7 @@ def main():
     iv_rv_gap = None if rv20 is None else float(ivp.iv_atm - rv20)
     regime_prob = float(regime_probs.get(dominant_regime, 0.0))
     expected_move = float(spot * ivp.iv_atm * (expiry_years**0.5))
-    if breakevens:
+    if breakevens is not None:
         be_dist = min(abs(b - spot) for b in breakevens)
         structure_match = float(max(0.0, 1.0 - abs(be_dist - expected_move) / max(expected_move, 1e-6)))
     else:
@@ -481,6 +481,8 @@ def main():
         },
         "friction_hurdle": friction_hurdle,
         "breakevens": breakevens,
+        "breakeven_reason": breakeven_reason,
+        "breakeven_solver": breakeven_solver,
         "edge_attribution": attribution,
         "gates": gate,
     }
