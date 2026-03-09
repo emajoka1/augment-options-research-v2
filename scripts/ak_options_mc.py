@@ -5,7 +5,7 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -191,6 +191,69 @@ def load_local_returns_fallback(root: Path) -> tuple[np.ndarray | None, str | No
     return None, None, None, None
 
 
+def _snapshot_fingerprint(snapshot_file: str | None) -> dict:
+    if not snapshot_file:
+        return {"path": None, "sha256": None, "mtime_utc": None}
+    p = Path(snapshot_file)
+    try:
+        raw = p.read_bytes()
+        return {
+            "path": str(p.resolve()),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "mtime_utc": datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+        }
+    except Exception:
+        return {"path": str(snapshot_file), "sha256": None, "mtime_utc": None}
+
+
+def _build_canonical_inputs(args, spot: float, strategy, friction: FrictionConfig, snapshot_fp: dict) -> dict:
+    return {
+        "underlying_snapshot_fingerprint": {
+            "symbol": "SPY",
+            "spot": float(round(spot, 6)),
+        },
+        "chain_snapshot": snapshot_fp,
+        "strategy_config": {
+            "model": args.model,
+            "example": args.example,
+            "expiry_days": float(args.expiry_days),
+            "dt_days": float(args.dt_days),
+            "seed": int(args.seed),
+            "r": float(args.r),
+            "q": float(args.q),
+            "n_batches": int(max(1, args.n_batches)),
+            "paths_per_batch": int(max(100, args.paths_per_batch)),
+            "event_risk_high": bool(args.event_risk_high),
+            "strategy_name": strategy.name,
+            "legs": [
+                (leg.side, leg.option_type, float(leg.strike), int(leg.qty), float(leg.expiry_years or 0.0))
+                for leg in strategy.legs
+            ],
+        },
+        "friction_config": {
+            "spread_bps": float(friction.spread_bps),
+            "slippage_bps": float(friction.slippage_bps),
+            "partial_fill_prob": float(friction.partial_fill_prob),
+        },
+    }
+
+
+def _canonical_inputs_hash(canonical_inputs: dict) -> str:
+    blob = json.dumps(canonical_inputs, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _latest_options_mc_artifact(out_base: Path) -> tuple[dict | None, Path | None]:
+    files = sorted(out_base.glob("options-mc-*.json"))
+    if not files:
+        return None, None
+    f = files[-1]
+    try:
+        return json.loads(f.read_text(encoding="utf-8")), f
+    except Exception:
+        return None, f
+
+
 def main():
     p = argparse.ArgumentParser(description="Real options Monte Carlo engine")
     p.add_argument("--spot", type=float, default=690.0)
@@ -209,6 +272,7 @@ def main():
     p.add_argument("--slippage-bps", type=float, default=8.0)
     p.add_argument("--partial-fill-prob", type=float, default=0.1)
     p.add_argument("--event-risk-high", action="store_true")
+    p.add_argument("--force-refresh-minutes", type=float, default=30.0)
     args = p.parse_args()
 
     paths = build_paths(Path(".").resolve())
@@ -256,6 +320,48 @@ def main():
     strategy = build_strategy(args.example, spot, expiry_years)
     exits = default_exit_rules_for_strategy(strategy.name)
     friction = FrictionConfig(spread_bps=args.spread_bps, slippage_bps=args.slippage_bps, partial_fill_prob=args.partial_fill_prob)
+
+    snapshot_fp = _snapshot_fingerprint(args.snapshot_file)
+    canonical_inputs = _build_canonical_inputs(args, spot, strategy, friction, snapshot_fp)
+    canonical_hash = _canonical_inputs_hash(canonical_inputs)
+
+    latest_payload, latest_path = _latest_options_mc_artifact(paths.kb_experiments)
+    forced_refresh = False
+    force_refresh_minutes = max(0.0, float(args.force_refresh_minutes))
+    should_skip = False
+    if latest_payload and latest_path:
+        latest_hash = latest_payload.get("canonical_inputs_hash")
+        same_inputs = isinstance(latest_hash, str) and (latest_hash == canonical_hash)
+        if same_inputs:
+            age = datetime.now(timezone.utc) - datetime.fromtimestamp(latest_path.stat().st_mtime, tz=timezone.utc)
+            cadence_elapsed = age >= timedelta(minutes=force_refresh_minutes) if force_refresh_minutes > 0 else True
+            if cadence_elapsed:
+                forced_refresh = True
+            else:
+                should_skip = True
+
+    if should_skip and latest_path is not None:
+        print(
+            json.dumps(
+                {
+                    "status": "NO_NEW_INPUTS",
+                    "skipped": True,
+                    "prior_artifact": {
+                        "path": str(latest_path),
+                        "generated_at": (latest_payload or {}).get("generated_at"),
+                        "config_hash": (latest_payload or {}).get("config_hash"),
+                        "canonical_inputs_hash": (latest_payload or {}).get("canonical_inputs_hash"),
+                    },
+                    "telemetry": {
+                        "options_mc_runs_total": 1,
+                        "options_mc_runs_skipped_no_new_inputs": 1,
+                        "options_mc_runs_forced_refresh": 0,
+                    },
+                },
+                indent=2,
+            )
+        )
+        return
 
     base_seed = args.seed
     comparison_mode = "paired"
@@ -468,6 +574,9 @@ def main():
     payload = {
         "generated_at": provenance["generated_at"],
         "config_hash": provenance["config_hash"],
+        "status": "FULL_REFRESH",
+        "canonical_inputs": canonical_inputs,
+        "canonical_inputs_hash": canonical_hash,
         "n_batches": provenance["n_batches"],
         "paths_per_batch": provenance["paths_per_batch"],
         "n_total_paths": provenance["n_total_paths"],
@@ -512,6 +621,8 @@ def main():
         "data_quality_status": data_quality_status,
         "telemetry": {
             "options_mc_runs_total": 1,
+            "options_mc_runs_skipped_no_new_inputs": 0,
+            "options_mc_runs_forced_refresh": 1 if forced_refresh else 0,
             "options_mc_rv_missing_events": 0 if rv_contract_pass else 1,
         },
         "regime_distribution": regime_probs,
@@ -554,6 +665,7 @@ def main():
                 "cvar_worst": multi_seed["cvar_worst"],
                 "n_total_paths": n_total_paths,
                 "allow_trade": gate["allow_trade"],
+                "status": "FULL_REFRESH",
             },
             indent=2,
         )
