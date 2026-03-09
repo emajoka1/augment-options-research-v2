@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ak_system.config import build_paths, ensure_dirs
-from ak_system.mc_options.calibration import calibrate_from_snapshot, defaults_from_market, parse_chain_snapshot
+from ak_system.mc_options.calibration import calibrate_from_snapshot, defaults_from_market, parse_chain_snapshot, realized_vol
 from ak_system.mc_options.metrics import compute_metrics, percentiles
 from ak_system.mc_options.models import GBMParams, HestonParams, JumpDiffusionParams, simulate_gbm_paths, simulate_heston_paths, simulate_jump_diffusion_paths
 from ak_system.mc_options.report import write_report_json_md
@@ -174,6 +174,22 @@ def infer_regime_distribution(model: str, spot: float, iv_atm: float, n_steps: i
     probs["dominant"] = max(counts.items(), key=lambda kv: kv[1])[0]
     return probs
 
+def load_local_returns_fallback(root: Path) -> tuple[np.ndarray | None, str | None, str | None, float | None]:
+    """Load latest local returns history from snapshots as deterministic RV fallback."""
+    files = sorted((root / "snapshots").glob("spy_mc_snapshot_*.json"))
+    for f in reversed(files):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            rets = data.get("returns") or []
+            arr = np.array(rets, dtype=float)
+            if arr.size:
+                mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+                freshness = max(0.0, (datetime.now(timezone.utc) - mtime).total_seconds())
+                return arr, "local_fallback", mtime.isoformat(), freshness
+        except Exception:
+            continue
+    return None, None, None, None
+
 
 def main():
     p = argparse.ArgumentParser(description="Real options Monte Carlo engine")
@@ -204,15 +220,38 @@ def main():
 
     spot = args.spot
     rv10 = rv20 = None
+    rv_source = None
+    rv_window_bars = None
+    rv_asof = None
+    rv_freshness_seconds = None
     jump_used = None
 
     if args.snapshot_file:
         snap = parse_chain_snapshot(args.snapshot_file)
         cal = calibrate_from_snapshot(snap, dt=dt)
         spot, rv10, rv20, jump_used = float(snap.spot), cal.rv10, cal.rv20, cal.jump
+        rv_source = "snapshot_primary" if (rv10 is not None and rv20 is not None) else None
+        rv_window_bars = int(len(snap.returns)) if snap.returns is not None else None
+        rv_asof = datetime.now(timezone.utc).isoformat()
+        rv_freshness_seconds = 0.0
         ivp = cal.iv
     else:
         _, jump_used, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
+
+    if rv10 is None or rv20 is None:
+        fallback_rets, fb_source, fb_asof, fb_freshness = load_local_returns_fallback(ROOT)
+        if fallback_rets is not None:
+            fb_rv10 = realized_vol(fallback_rets, 10, dt)
+            fb_rv20 = realized_vol(fallback_rets, 20, dt)
+            if fb_rv10 is not None and fb_rv20 is not None:
+                rv10, rv20 = fb_rv10, fb_rv20
+                rv_source = fb_source
+                rv_window_bars = int(fallback_rets.size)
+                rv_asof = fb_asof
+                rv_freshness_seconds = fb_freshness
+
+    rv_contract_pass = (rv10 is not None and rv20 is not None)
+    data_quality_status = "OK" if rv_contract_pass else "DATA_QUALITY_FAIL: missing_realized_vol"
 
     strategy = build_strategy(args.example, spot, expiry_years)
     exits = default_exit_rules_for_strategy(strategy.name)
@@ -369,7 +408,7 @@ def main():
     }
 
     # edge attribution (required for ALLOW)
-    iv_rv_gap = None if rv20 is None else float(ivp.iv_atm - rv20)
+    iv_rv_gap = float(ivp.iv_atm - rv20) if rv_contract_pass else None
     regime_prob = float(regime_probs.get(dominant_regime, 0.0))
     expected_move = float(spot * ivp.iv_atm * (expiry_years**0.5))
     if breakevens is not None:
@@ -395,7 +434,7 @@ def main():
 
     explainability_signals_present = int(iv_rv_present) + int(regime_present) + int(structure_present)
     explainability_signals_pass = int(iv_rv_pass) + int(regime_pass) + int(structure_pass)
-    explainable = explainability_signals_pass >= 2
+    explainable = (explainability_signals_pass >= 2) if rv_contract_pass else False
 
     attribution = {
         "iv_rich_vs_rv": iv_rv_gap,
@@ -409,10 +448,12 @@ def main():
             "min_signals_pass": 2,
         },
         "explainable": bool(explainable),
+        "explainable_reason": None if rv_contract_pass else "missing_realized_vol",
     }
 
     gate["allow_trade"] = bool(
-        gate["ev_gate"]
+        rv_contract_pass
+        and gate["ev_gate"]
         and gate["ev_ci_gate"]
         and gate["cvar_gate"]
         and gate["cvar_worst_gate"]
@@ -462,7 +503,16 @@ def main():
             "term": ivp.term,
             "rv10": rv10,
             "rv20": rv20,
+            "rv_source": rv_source,
+            "rv_window_bars": rv_window_bars,
+            "rv_asof": rv_asof,
+            "rv_freshness_seconds": rv_freshness_seconds,
             "jump": jump_used.__dict__ if jump_used else None,
+        },
+        "data_quality_status": data_quality_status,
+        "telemetry": {
+            "options_mc_runs_total": 1,
+            "options_mc_rv_missing_events": 0 if rv_contract_pass else 1,
         },
         "regime_distribution": regime_probs,
         "stress": {
