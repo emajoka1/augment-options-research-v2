@@ -1,0 +1,42 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_dq_fail_metrics_redaction_contract",
+  "priority": "P1",
+  "created_utc": "2026-03-09T06:24:00Z",
+  "problem": "Current options-MC artifacts still publish full EV/POP/CVaR metrics even when `data_quality_status=DATA_QUALITY_FAIL: stale_realized_vol` and `allow_trade=false`. This creates a high-risk contract ambiguity: any downstream sorter/alerter that reads headline metrics can mis-rank non-tradable setups and generate profitability-degrading noise during feed outages.",
+  "evidence": {
+    "latest_artifact": "kb/experiments/options-mc-20260309-062200.json",
+    "observed_fields": {
+      "data_quality_status": "DATA_QUALITY_FAIL: stale_realized_vol",
+      "gates_allow_trade": false,
+      "metrics_ev": 0.3518687898929467,
+      "metrics_pop": 0.664,
+      "status": "FULL_REFRESH"
+    },
+    "pattern": "Multiple recent artifacts in kb/experiments continue to expose positive headline metrics while DQ fail persists."
+  },
+  "required_change": [
+    "Define a fail-closed output contract for options-MC artifacts: when `data_quality_status` starts with `DATA_QUALITY_FAIL`, set `decision_state=NO_TRADE_DQ_FAIL` and mark quantitative sections as non-actionable.",
+    "Redact or nullify action-driving metric fields in DQ-fail mode (`metrics`, `friction_hurdle`, `multi_seed_confidence`, and markdown headline summary values), while preserving diagnostics needed for debugging (`data_quality_status`, reason code, freshness telemetry, canonical input hash).",
+    "Add explicit machine-readable guard field `actionable_metrics=false` in JSON and mirrored text in markdown brief.",
+    "Enforce downstream-safe ordering: data-quality gate evaluation must run before any metric publication step so no transient actionable metrics leak on DQ fail runs.",
+    "Maintain backward compatibility by keeping keys present but nullable in DQ-fail mode, with an added `metrics_redaction_reason` field."
+  ],
+  "acceptance_tests": [
+    "Unit test: DQ pass run (`data_quality_status=OK`) keeps full metrics and sets `actionable_metrics=true`.",
+    "Unit test: DQ fail run (`DATA_QUALITY_FAIL:*`) sets `actionable_metrics=false`, `decision_state=NO_TRADE_DQ_FAIL`, and redacts/nulls action-driving metric fields while keeping diagnostics populated.",
+    "Unit test: markdown output for DQ fail clearly states metrics are non-actionable and does not print EV/POP/CVaR headline values.",
+    "Regression test: JSON schema consumers expecting keys do not break (keys remain present, nullable where redacted).",
+    "Integration test: replay stale-RV fixture and verify no emitted artifact can be ranked by EV because actionable metric payload is redacted under DQ fail."
+  ],
+  "constraints": [
+    "Do not relax existing fail-closed trade gating.",
+    "Do not remove diagnostic provenance fields required for incident triage.",
+    "Keep contract deterministic and explicitly documented for downstream consumers."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

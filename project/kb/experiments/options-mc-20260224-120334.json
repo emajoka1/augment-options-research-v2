@@ -1,0 +1,140 @@
+{
+  "assumptions": {
+    "model": "heston",
+    "spot": 682.92,
+    "r": 0.03,
+    "q": 0.0,
+    "expiry_years": 0.07123287671232877,
+    "n_paths": 5000,
+    "n_batches": 4,
+    "paths_per_batch": 500,
+    "dt": 0.00209508460918614,
+    "seed": 21,
+    "strategy": "put_debit_spread",
+    "legs": [
+      {
+        "side": "long",
+        "option_type": "put",
+        "strike": 683,
+        "qty": 1,
+        "expiry_years": null
+      },
+      {
+        "side": "short",
+        "option_type": "put",
+        "strike": 681,
+        "qty": 1,
+        "expiry_years": null
+      }
+    ],
+    "snapshot_file": "snapshots/spy_mc_snapshot_20260224.json",
+    "event_risk_high": false
+  },
+  "randomness_policy": {
+    "comparison_mode": "paired",
+    "base_seed": 21,
+    "sensitivity_seed": 21,
+    "crn_scope": "same_model_same_structure_friction_only",
+    "cross_model_or_cross_structure": "unpaired_independent_seeds_required"
+  },
+  "calibration": {
+    "iv_atm": 0.19510896967482647,
+    "skew": 0.011309538277646799,
+    "curv": 6.447950056132601,
+    "term": 0.052073584954025,
+    "rv10": 0.1466850051739489,
+    "rv20": 0.16594477577191283,
+    "jump": {
+      "mu": 0.03,
+      "sigma": 0.14538502650882348,
+      "jump_lambda": 23.86538461538462,
+      "jump_mu": -0.005711059482233119,
+      "jump_sigma": 0.017595225531969357
+    }
+  },
+  "regime_distribution": {
+    "mean_revert|vol_contracting": 0.4066666666666667,
+    "trend|vol_contracting": 0.22666666666666666,
+    "trend|vol_expanding": 0.16,
+    "mean_revert|vol_expanding": 0.20666666666666667,
+    "dominant": "mean_revert|vol_contracting"
+  },
+  "stress": {
+    "spread_bps": 10.0,
+    "slippage_bps": 3.0,
+    "partial_fill_prob": 0.03
+  },
+  "metrics": {
+    "ev": -0.3258950874694793,
+    "pop": 0.34,
+    "pot": 0.338,
+    "profit_factor": 0.49949013681315324,
+    "avg_win": 0.9565621085478664,
+    "avg_loss": -0.9865548551147788,
+    "expectancy": -0.32589508746947937,
+    "var95": -0.9897229032188614,
+    "cvar95": -0.9898192221534691,
+    "tail_p1": -0.9899554739774968,
+    "min_pl": -0.9899578739774969,
+    "max_pl": 0.9966265376475301
+  },
+  "multi_seed_confidence": {
+    "n_batches": 4,
+    "paths_per_batch": 500,
+    "ev_mean": -0.2682164272925102,
+    "ev_std": 0.03437111452809697,
+    "ev_5th_percentile": -0.316324100821099,
+    "pop_mean": 0.36900000000000005,
+    "cvar_mean": -0.9891870926235891,
+    "cvar_worst": -1.0086389907946651
+  },
+  "distribution_percentiles": {
+    "p1": -0.9899554739774968,
+    "p5": -0.9897229032188614,
+    "p10": -0.9864750980396847,
+    "p25": -0.9864750980396847,
+    "p50": -0.9864750980396847,
+    "p75": 0.9513601371489049,
+    "p90": 0.9683904933221825,
+    "p95": 0.977352143751032,
+    "p99": 0.9873068839252084
+  },
+  "sensitivity": {
+    "wide_spread_slippage_ev": -0.3201265437051064,
+    "wide_spread_slippage_pop": 0.35750000000000004,
+    "wide_spread_slippage_cvar95": -1.008267315536117,
+    "ev_delta_real_to_stress": -0.051910116412596186
+  },
+  "friction_hurdle": {
+    "ev_mid": -0.22518925712170074,
+    "ev_real": -0.2682164272925102,
+    "ev_stress": -0.3201265437051064,
+    "delta_ev_real": -0.04302717017080948,
+    "delta_ev_stress": -0.09493728658340567,
+    "ev_mid_R": -0.22747357543298816,
+    "ev_real_R": -0.27093721292892825,
+    "ev_stress_R": -0.32337390521365084
+  },
+  "breakevens": [
+    682.0134451448852
+  ],
+  "edge_attribution": {
+    "iv_rich_vs_rv": 0.029164193902913638,
+    "mean_reversion_regime_probability": 0.4066666666666667,
+    "structure_expected_move_match": 0.02549216842702362,
+    "explainable": true
+  },
+  "gates": {
+    "regime": "mean_revert|vol_contracting",
+    "ev_threshold_R": 0.05,
+    "cvar_threshold_R": -1.0,
+    "ev_gate": false,
+    "ev_ci_gate": false,
+    "cvar_gate": true,
+    "cvar_worst_gate": false,
+    "pop_or_pot": false,
+    "slippage_sensitivity_ok": true,
+    "stress_ev_not_catastrophic": true,
+    "allow_trade": false
+  }
+}

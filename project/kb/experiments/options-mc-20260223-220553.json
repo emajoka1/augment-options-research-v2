@@ -1,0 +1,152 @@
+{
+  "assumptions": {
+    "model": "jump",
+    "spot": 689.81,
+    "r": 0.03,
+    "q": 0.0,
+    "expiry_years": 0.0027397260273972603,
+    "n_paths": 5000,
+    "n_batches": 5,
+    "paths_per_batch": 800,
+    "dt": 0.0006849315068493151,
+    "seed": 42,
+    "strategy": "iron_fly",
+    "legs": [
+      {
+        "side": "short",
+        "option_type": "call",
+        "strike": 690,
+        "qty": 1,
+        "expiry_years": null
+      },
+      {
+        "side": "short",
+        "option_type": "put",
+        "strike": 690,
+        "qty": 1,
+        "expiry_years": null
+      },
+      {
+        "side": "long",
+        "option_type": "call",
+        "strike": 697,
+        "qty": 1,
+        "expiry_years": null
+      },
+      {
+        "side": "long",
+        "option_type": "put",
+        "strike": 683,
+        "qty": 1,
+        "expiry_years": null
+      }
+    ],
+    "snapshot_file": "experiments/chain_snapshot_with_returns.json",
+    "event_risk_high": false
+  },
+  "randomness_policy": {
+    "comparison_mode": "paired",
+    "base_seed": 42,
+    "sensitivity_seed": 42,
+    "crn_scope": "same_model_same_structure_friction_only",
+    "cross_model_or_cross_structure": "unpaired_independent_seeds_required"
+  },
+  "calibration": {
+    "iv_atm": 0.4322705098312481,
+    "skew": -0.43916933137193687,
+    "curv": 67.67670905079058,
+    "term": -0.463687439258477,
+    "rv10": 0.09009772472154888,
+    "rv20": 0.09656992285385756,
+    "jump": {
+      "mu": 0.03,
+      "sigma": 0.11258390648756153,
+      "jump_lambda": 58.400000000000006,
+      "jump_mu": -0.006,
+      "jump_sigma": 0.01
+    }
+  },
+  "regime_distribution": {
+    "mean_revert|vol_contracting": 1.0,
+    "dominant": "mean_revert|vol_contracting"
+  },
+  "stress": {
+    "spread_bps": 30.0,
+    "slippage_bps": 8.0,
+    "partial_fill_prob": 0.1
+  },
+  "metrics": {
+    "ev": -0.05747687736237433,
+    "pop": 0.32375,
+    "pot": 0.0,
+    "profit_factor": 0.9432328103664191,
+    "avg_win": 2.949883695728482,
+    "avg_loss": -1.4972299058846141,
+    "expectancy": -0.05747687736237417,
+    "var95": -1.633530841643023,
+    "cvar95": -1.654830770336878,
+    "tail_p1": -1.6679797993008616,
+    "min_pl": -1.7146996335368838,
+    "max_pl": 5.243159219012044
+  },
+  "multi_seed_confidence": {
+    "n_batches": 5,
+    "paths_per_batch": 800,
+    "ev_mean": -0.13865232633522606,
+    "ev_std": 0.04555372586062039,
+    "ev_5th_percentile": -0.18585020435801874,
+    "pop_mean": 0.313,
+    "cvar_mean": -1.6590257271551176,
+    "cvar_worst": -1.8028683328678503
+  },
+  "distribution_percentiles": {
+    "p1": -1.6679797993008616,
+    "p5": -1.633530841643023,
+    "p10": -1.609991091880897,
+    "p25": -1.5789980279301488,
+    "p50": -1.5500209398753526,
+    "p75": 1.3911896138990536,
+    "p90": 4.042200723811757,
+    "p95": 4.787861473201854,
+    "p99": 5.21900834156739
+  },
+  "sensitivity": {
+    "wide_spread_slippage_ev": -0.19856175053777952,
+    "wide_spread_slippage_pop": 0.31075,
+    "wide_spread_slippage_cvar95": -1.7939092689784961,
+    "ev_delta_real_to_stress": -0.05990942420255346
+  },
+  "friction_hurdle": {
+    "ev_mid": -0.08378381741029692,
+    "ev_real": -0.13865232633522606,
+    "ev_stress": -0.19856175053777952,
+    "delta_ev_real": -0.054868508924929144,
+    "delta_ev_stress": -0.1147779331274826,
+    "ev_mid_R": -0.04886209559482868,
+    "ev_real_R": -0.0808609995729865,
+    "ev_stress_R": -0.11579972763405177
+  },
+  "breakevens": [
+    688.5027700941154,
+    691.4972299058846
+  ],
+  "edge_attribution": {
+    "iv_rich_vs_rv": 0.3357005869773905,
+    "mean_reversion_regime_probability": 1.0,
+    "structure_expected_move_match": 0.08375549559882378,
+    "explainable": true
+  },
+  "gates": {
+    "regime": "mean_revert|vol_contracting",
+    "ev_threshold_R": 0.05,
+    "cvar_threshold_R": -1.0,
+    "ev_gate": false,
+    "ev_ci_gate": false,
+    "cvar_gate": true,
+    "cvar_worst_gate": false,
+    "pop_or_pot": false,
+    "slippage_sensitivity_ok": true,
+    "stress_ev_not_catastrophic": true,
+    "allow_trade": false
+  }
+}

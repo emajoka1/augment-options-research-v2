@@ -1,0 +1,102 @@
+{
+  "assumptions": {
+    "model": "heston",
+    "spot": 689.81,
+    "r": 0.03,
+    "q": 0.0,
+    "expiry_years": 0.0136986301369863,
+    "n_paths": 5000,
+    "dt": 0.0006849315068493151,
+    "seed": 42,
+    "strategy": "iron_fly",
+    "legs": [
+      {
+        "side": "short",
+        "option_type": "call",
+        "strike": 690,
+        "qty": 1
+      },
+      {
+        "side": "short",
+        "option_type": "put",
+        "strike": 690,
+        "qty": 1
+      },
+      {
+        "side": "long",
+        "option_type": "call",
+        "strike": 697,
+        "qty": 1
+      },
+      {
+        "side": "long",
+        "option_type": "put",
+        "strike": 683,
+        "qty": 1
+      }
+    ],
+    "snapshot_file": "experiments/chain_snapshot_example.json"
+  },
+  "calibration": {
+    "iv_atm": 0.40202483819014906,
+    "skew": -1.9143826584121355,
+    "curv": -709.4413360741239,
+    "term": 0.0,
+    "rv10": null,
+    "rv20": null,
+    "jump": {
+      "mu": 0.03,
+      "sigma": 0.40202483819014906,
+      "jump_lambda": 0.25,
+      "jump_mu": -0.06,
+      "jump_sigma": 0.2
+    }
+  },
+  "stress": {
+    "spread_bps": 30.0,
+    "slippage_bps": 8.0,
+    "partial_fill_prob": 0.1
+  },
+  "metrics": {
+    "ev": 3.830158057974308,
+    "pop": 1.0,
+    "pot": 0.9794,
+    "profit_factor": Infinity,
+    "avg_win": 3.830158057974308,
+    "avg_loss": 0.0,
+    "expectancy": 3.830158057974308,
+    "var95": 3.8024949956722205,
+    "cvar95": 3.748075346967166,
+    "tail_p1": 3.6862013607969035,
+    "min_pl": 3.350858738810503,
+    "max_pl": 8.663238795220071
+  },
+  "distribution_percentiles": {
+    "p1": 3.6862013607969035,
+    "p5": 3.8024949956722205,
+    "p10": 3.809916671177024,
+    "p25": 3.8213806712847536,
+    "p50": 3.833265561868833,
+    "p75": 3.8416927488868478,
+    "p90": 3.8467661608967774,
+    "p95": 3.848990534790438,
+    "p99": 3.851403758210513
+  },
+  "sensitivity": {
+    "wide_spread_slippage_ev": 3.7233251831065615,
+    "wide_spread_slippage_pop": 1.0,
+    "wide_spread_slippage_cvar95": 3.576378912378597,
+    "ev_delta": -0.10683287486774651
+  },
+  "breakevens": [
+    686.1698419420256,
+    693.8301580579744
+  ],
+  "gates": {
+    "ev_gt_0.05R": true,
+    "cvar95_gt_-1R": true,
+    "pop_or_pot": true,
+    "slippage_sensitivity_ok": true,
+    "allow_trade": true
+  }
+}

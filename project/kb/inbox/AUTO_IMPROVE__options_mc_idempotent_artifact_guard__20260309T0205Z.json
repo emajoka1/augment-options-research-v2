@@ -1,0 +1,52 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_idempotent_artifact_guard",
+  "priority": "P1",
+  "created_utc": "2026-03-09T02:05:00Z",
+  "problem": "Latest options-MC generation is repeatedly emitting byte-identical decision artifacts for unchanged inputs, creating false confidence (apparent sample size inflation), alert/log noise, and unnecessary compute/storage burn. This is a reliability and profitability risk because operators can misread repeated identical outputs as new evidence instead of stale state.",
+  "evidence": {
+    "sample_window": "kb/experiments/options-mc-20260309-*.json",
+    "files_checked": 60,
+    "duplicate_clusters": [
+      {
+        "spot": 671.39,
+        "config_hash": "6d338f8a0957e880305d7c5ca2b1f695ca8a573cba24ab3344e06486977160ee",
+        "identical_metrics_count": 33,
+        "first_file": "kb/experiments/options-mc-20260309-001300.json",
+        "last_file": "kb/experiments/options-mc-20260309-020506.json"
+      },
+      {
+        "spot": 682.92,
+        "config_hash": "29d7a0bf1d9ac4d62acfb62ac3afcc48a38cbc6403b12ac880c6ff9d15dee3c2",
+        "identical_metrics_count": 21,
+        "first_file": "kb/experiments/options-mc-20260309-015312.json",
+        "last_file": "kb/experiments/options-mc-20260309-020244.json"
+      }
+    ],
+    "symptom": "EV/POP/CVaR and gate outcomes are unchanged across repeated artifacts despite new file timestamps."
+  },
+  "required_change": [
+    "Add an input-change/idempotency guard before writing options-MC artifacts: if canonical decision inputs are unchanged (underlying snapshot fingerprint, chain snapshot timestamp/hash, strategy config hash, friction config), do not emit a new full artifact.",
+    "Emit machine-readable status `NO_NEW_INPUTS` with references to prior artifact id/path when run is skipped.",
+    "Introduce a minimum recalc cadence override (e.g., force refresh every N minutes) so operators can still request periodic recomputation intentionally.",
+    "Prevent repeated skipped runs from entering ranking/trade-ready pipelines; they should be treated as state-hold, not new opportunity evidence.",
+    "Add telemetry counters: `options_mc_runs_total`, `options_mc_runs_skipped_no_new_inputs`, `options_mc_runs_forced_refresh`."
+  ],
+  "acceptance_tests": [
+    "Unit test: identical canonical inputs across consecutive invocations -> second invocation emits `NO_NEW_INPUTS`, no new full artifact file is created, and prior artifact reference is populated.",
+    "Unit test: change in any canonical input (spot snapshot hash, chain timestamp, config hash, or friction config) -> full artifact is generated (not skipped).",
+    "Unit test: force-refresh cadence reached -> full artifact is generated even with otherwise unchanged inputs, and telemetry increments forced-refresh counter.",
+    "Integration test: replay a fixture with 10 repeated unchanged triggers -> exactly 1 full artifact + 9 `NO_NEW_INPUTS` statuses.",
+    "Regression test: ranking/notification path ignores `NO_NEW_INPUTS` runs as new candidates while preserving last valid artifact for display."
+  ],
+  "constraints": [
+    "Do not relax risk/tail/stress/explainability gates.",
+    "Do not remove existing artifact fields; additive status/telemetry fields only.",
+    "Keep deterministic behavior for backtests/replays (same inputs => same skip/full decision)."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

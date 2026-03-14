@@ -1,0 +1,16 @@
+{
+  "spot": 689.81,
+  "returns": [0.004, -0.006, 0.003, -0.005, 0.002, -0.004, 0.003, -0.002, 0.001, -0.003, 0.002, -0.001, 0.002, -0.004, 0.003, -0.002, 0.001, -0.003, 0.002, -0.002, 0.003, -0.004, 0.002, -0.001, 0.002],
+  "chain": [
+    {"strike": 680, "iv": 0.42, "expiry_days": 1},
+    {"strike": 685, "iv": 0.41, "expiry_days": 1},
+    {"strike": 690, "iv": 0.40, "expiry_days": 1},
+    {"strike": 695, "iv": 0.40, "expiry_days": 1},
+    {"strike": 700, "iv": 0.41, "expiry_days": 1},
+    {"strike": 680, "iv": 0.39, "expiry_days": 5},
+    {"strike": 685, "iv": 0.38, "expiry_days": 5},
+    {"strike": 690, "iv": 0.37, "expiry_days": 5},
+    {"strike": 695, "iv": 0.37, "expiry_days": 5},
+    {"strike": 700, "iv": 0.38, "expiry_days": 5}
+  ]
+}

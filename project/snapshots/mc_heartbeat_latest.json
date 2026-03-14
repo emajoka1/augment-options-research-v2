@@ -1,0 +1,313 @@
+{
+  "timestamp": "2026-03-09T06:19:25.688104+00:00",
+  "trace_ids": {
+    "snapshot_id": "snapshot_1773037152991_44c33b40",
+    "brief_id": "brief_20260309T061923Z_c9b26e01",
+    "mc_id": "mc_20260309T061924Z_35d97c94"
+  },
+  "data_status": "OK_FALLBACK",
+  "symbols_with_data": 0,
+  "data_source": "cboe-delayed-public",
+  "spot": 671.39,
+  "regime": "Risk-off",
+  "trend": "down_or_flat",
+  "vix_direction": "up",
+  "rates_direction": "down",
+  "final_decision": "PASS",
+  "action_state": "WATCH",
+  "missing_required": [],
+  "risk_estimator": {
+    "version": "v1",
+    "structure_type": "debit",
+    "max_loss": 0.0,
+    "risk_cap": 250.0,
+    "feasible_under_cap": true
+  },
+  "trade_ready_rule": {
+    "r_structural": 3.0,
+    "r_structural_source": "defined_risk_width",
+    "r_minpl_debug": 1.7354760303834107,
+    "ev_mean_R": 0.10511246042272854,
+    "ev_seed_p5_R": 0.06432960283168745,
+    "ev_seed_p5_min_batches": 5,
+    "ev_stress_mean_R": 0.09438472262797219,
+    "pl_p5_R": -0.567144628311781,
+    "pl_p5_threshold_R": -0.5,
+    "cvar_worst_R": -0.5897388734898389,
+    "stress_delta_ev_mean_R": -0.01072773779475635,
+    "explainable_edge_raw": false,
+    "explainability_signals_pass": 2,
+    "explainability_tiered_pass": true,
+    "pass": false,
+    "failures": [
+      "pl_p5_not_above_threshold",
+      "structural_quality_below_threshold",
+      "pl_p5_below_threshold"
+    ]
+  },
+  "steady_gate": {
+    "decision": "PASS",
+    "approved": false,
+    "risk_multiplier": null,
+    "reasons": [
+      "structural_quality_below_threshold",
+      "pl_p5_below_threshold"
+    ],
+    "input": {
+      "structure": {
+        "quality": 0.0,
+        "structural_r_clean": true,
+        "invalidation_1r": true
+      },
+      "mc": {
+        "ev_seed_p5_r": 0.06432960283168745,
+        "pl_p5_r": -0.567144628311781,
+        "cvar95_r": -0.5897388734898389,
+        "stress_delta_ev_r": -0.01072773779475635,
+        "explainable": true
+      },
+      "regime": {
+        "bucket": "hostile",
+        "extreme_vol": true,
+        "short_premium": false
+      },
+      "allocation": {
+        "trades_today": 0,
+        "trades_week": 0,
+        "day_pnl_r": 0.0,
+        "correlated_exposure_pct": 0.0
+      }
+    }
+  },
+  "spot_integrity": {
+    "ref_source": "cboe_quote_mid",
+    "ref_spot": 671.39,
+    "delta": 0.0,
+    "max_delta": 0.5,
+    "ok": true
+  },
+  "mc_provenance": {
+    "options_mc_source_mode": "run_local_fresh",
+    "options_mc_source_file": "/Users/forge/.openclaw/workspace/kb/experiments/options-mc-20260309-061800.json",
+    "generated_at": "2026-03-09T06:18:00.177987+00:00",
+    "config_hash": "6d338f8a0957e880305d7c5ca2b1f695ca8a573cba24ab3344e06486977160ee",
+    "model": "jump",
+    "n_batches": 10,
+    "paths_per_batch": 500,
+    "n_total_paths": 5000,
+    "computed_n_total_paths": 5000,
+    "assumptions_n_paths": 5000,
+    "counts_consistent": true,
+    "source_stale": false,
+    "base_seed": 3019,
+    "crn_scope": "same_model_same_structure_friction_only",
+    "provenance_ok": true,
+    "provenance_errors": []
+  },
+  "freshness": {
+    "max_age_seconds": 7200,
+    "pass": true,
+    "inputs": {
+      "options_mc_generated_at": {
+        "timestamp": "2026-03-09T06:18:00.177987+00:00",
+        "age_seconds": 85,
+        "max_age_seconds": 7200,
+        "fresh": true,
+        "reason": null
+      }
+    }
+  },
+  "top_candidate": {
+    "type": "debit",
+    "decision": "PASS",
+    "score": 0,
+    "gate_failures": [
+      "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+    ]
+  },
+  "raw": {
+    "brief_meta": {
+      "brief_id": "brief_20260309T061923Z_c9b26e01",
+      "snapshot_id": "snapshot_1773037152991_44c33b40",
+      "live_path": "/Users/forge/lab/data/tastytrade/spy_live_snapshot.json",
+      "live_fresh": true,
+      "spot_source": "cboe_bid_ask_mid",
+      "spot_timestamp": "2026-03-06T16:00:00"
+    },
+    "TRADE BRIEF": {
+      "Time": "2026-03-09T06:19+00:00",
+      "Ticker": "SPY",
+      "Spot": 671.39,
+      "Regime": {
+        "riskState": "Risk-off",
+        "trend": "down_or_flat",
+        "vixDirection": "up",
+        "ratesDirection": "down",
+        "metrics": [
+          {
+            "metric": "MA5-MA20",
+            "value": -4.815,
+            "threshold": ">0",
+            "interpretation": "not-uptrend"
+          },
+          {
+            "metric": "VIX day change",
+            "value": 5.74,
+            "threshold": "<0 risk-on",
+            "interpretation": "up"
+          },
+          {
+            "metric": "US10Y day change",
+            "value": -0.013,
+            "threshold": "context",
+            "interpretation": "down"
+          }
+        ]
+      },
+      "Volatility State": {
+        "ivCurrent": 0.21496666666666667,
+        "ivRankProxy": null,
+        "ivVsRv10": 0.09049125544777058,
+        "ivVsRv20": 0.0819519930204298,
+        "termStructureFrontBack": null,
+        "skewPutMinusCall": null,
+        "volLabel": "expensive",
+        "expansionRisk": "low_or_moderate",
+        "contractionRisk": "high",
+        "classifier": {
+          "regime": "EXTREME_VOL",
+          "ivRvRatio": 1.616112424095312,
+          "termState": "unknown",
+          "skewState": "unknown",
+          "explanation": "iv/base_rv=1.616"
+        }
+      },
+      "Candidates": [
+        {
+          "type": "debit",
+          "decision": "PASS",
+          "score": {
+            "Total": 0
+          },
+          "ticket": null,
+          "gateFailures": [
+            "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+          ],
+          "whys": [],
+          "counterfactuals": {},
+          "maxLossPerContract": null
+        },
+        {
+          "type": "credit",
+          "decision": "PASS",
+          "score": {
+            "Total": 0
+          },
+          "ticket": null,
+          "gateFailures": [
+            "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+          ],
+          "whys": [],
+          "counterfactuals": {},
+          "maxLossPerContract": null
+        },
+        {
+          "type": "condor",
+          "decision": "PASS",
+          "score": {
+            "Total": 0
+          },
+          "ticket": null,
+          "gateFailures": [
+            "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+          ],
+          "whys": [],
+          "counterfactuals": {},
+          "maxLossPerContract": null
+        }
+      ],
+      "ClosestNearMiss": {
+        "type": "debit",
+        "score": 0,
+        "gateFailures": [
+          "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+        ],
+        "flipHint": "improve credit/debit by ~3% or shift 1 strike"
+      },
+      "Final Decision": "PASS",
+      "NoCandidatesReason": "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads.",
+      "DefaultBias": "NO TRADE",
+      "missingRequiredData": [],
+      "executionPlan": {
+        "fillMethod": "Start at mid, improve by $0.01 increments, max chase = $0.05 from mid",
+        "multiLegSpreadThreshold": 0.05
+      },
+      "riskFramework": {
+        "accountSize": 10000.0,
+        "maxRiskPct": 0.025,
+        "maxRiskDollars": 250.0
+      }
+    }
+  },
+  "traceIds": {
+    "snapshot_id": "snapshot_1773037152991_44c33b40",
+    "brief_id": "brief_20260309T061923Z_c9b26e01",
+    "mc_id": "mc_20260309T061924Z_35d97c94"
+  },
+  "spotIntegrity": {
+    "ref_source": "cboe_quote_mid",
+    "ref_spot": 671.39,
+    "delta": 0.0,
+    "max_delta": 0.5,
+    "ok": true
+  },
+  "mcProvenance": {
+    "options_mc_source_mode": "run_local_fresh",
+    "options_mc_source_file": "/Users/forge/.openclaw/workspace/kb/experiments/options-mc-20260309-061800.json",
+    "generated_at": "2026-03-09T06:18:00.177987+00:00",
+    "config_hash": "6d338f8a0957e880305d7c5ca2b1f695ca8a573cba24ab3344e06486977160ee",
+    "model": "jump",
+    "n_batches": 10,
+    "paths_per_batch": 500,
+    "n_total_paths": 5000,
+    "computed_n_total_paths": 5000,
+    "assumptions_n_paths": 5000,
+    "counts_consistent": true,
+    "source_stale": false,
+    "base_seed": 3019,
+    "crn_scope": "same_model_same_structure_friction_only",
+    "provenance_ok": true,
+    "provenance_errors": []
+  },
+  "tradeReadyRule": {
+    "r_structural": 3.0,
+    "r_structural_source": "defined_risk_width",
+    "r_minpl_debug": 1.7354760303834107,
+    "ev_mean_R": 0.10511246042272854,
+    "ev_seed_p5_R": 0.06432960283168745,
+    "ev_seed_p5_min_batches": 5,
+    "ev_stress_mean_R": 0.09438472262797219,
+    "pl_p5_R": -0.567144628311781,
+    "pl_p5_threshold_R": -0.5,
+    "cvar_worst_R": -0.5897388734898389,
+    "stress_delta_ev_mean_R": -0.01072773779475635,
+    "explainable_edge_raw": false,
+    "explainability_signals_pass": 2,
+    "explainability_tiered_pass": true,
+    "pass": false,
+    "failures": [
+      "pl_p5_not_above_threshold",
+      "structural_quality_below_threshold",
+      "pl_p5_below_threshold"
+    ]
+  },
+  "riskEstimator": {
+    "version": "v1",
+    "structure_type": "debit",
+    "max_loss": 0.0,
+    "risk_cap": 250.0,
+    "feasible_under_cap": true
+  },
+  "attempt": 1,
+  "max_attempts": 1
+}

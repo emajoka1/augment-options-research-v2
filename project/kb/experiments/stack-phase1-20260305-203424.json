@@ -1,0 +1,41 @@
+{
+  "phase": "stack_phase1",
+  "asof_utc": "2026-03-05T20:34:24.469302+00:00",
+  "symbol": "SPY",
+  "adapters": {
+    "akshare": {
+      "asof_utc": "2026-03-05T20:34:24.468972+00:00",
+      "source": "akshare_unavailable",
+      "symbol": "SPY",
+      "feature_set": {
+        "close": null,
+        "open": null,
+        "high": null,
+        "low": null,
+        "volume": null,
+        "macro_proxy": null
+      },
+      "quality_flags": [
+        "adapter_unavailable",
+        "research_only_no_trade"
+      ]
+    },
+    "qlib": {
+      "asof_utc": "2026-03-05T20:34:24.469272+00:00",
+      "source": "qlib_unavailable",
+      "symbol": "SPY",
+      "feature_set": {
+        "momentum_20d": null,
+        "volatility_20d": null,
+        "value_proxy": null,
+        "liquidity_proxy": null
+      },
+      "quality_flags": [
+        "adapter_unavailable",
+        "research_only_no_trade"
+      ]
+    }
+  },
+  "research_only": true,
+  "execution_impact": "none"
+}

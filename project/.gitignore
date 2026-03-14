@@ -1,0 +1,23 @@
+# Secrets / local env
+.mc.env
+.env
+*.key
+
+# Local tool/runtime artifacts
+.venv/
+.openclaw/
+.clawhub/
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+logs/
+
+# Generated packaging metadata
+src/*.egg-info/
+src/**/*.egg-info/

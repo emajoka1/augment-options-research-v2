@@ -1,0 +1,26 @@
+{
+  "lane": "hypothesis",
+  "symbol": "SPY",
+  "hypothesis": {
+    "assumptions": [
+      "volatility mean-reverts after event shock",
+      "liquidity remains sufficient for defined-risk structures"
+    ],
+    "expected_edge_mechanism": "Short-term volatility dislocation decays faster than priced in front expiration.",
+    "invalidation": "Regime flips to trend|vol_expanding with rising rates and widening spreads.",
+    "confidence_source": "rule_based_placeholder",
+    "provenance": {
+      "prompt_version": "v1",
+      "model_id": "rd-agent:placeholder",
+      "run_timestamp_utc": "2026-03-05T20:37:05.653373+00:00",
+      "config_hash": "6e887dba2d0b3d176800555c98c4e43cf67ed2a27909b65e254238e9dfb78cce"
+    }
+  },
+  "guardrails": {
+    "can_set_trade_ready": false,
+    "allowed_outputs": [
+      "research_task",
+      "ticket_proposal"
+    ]
+  }
+}

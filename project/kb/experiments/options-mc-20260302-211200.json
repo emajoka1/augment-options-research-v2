@@ -1,0 +1,148 @@
+{
+  "assumptions": {
+    "model": "jump",
+    "spot": 690.0,
+    "r": 0.03,
+    "q": 0.0,
+    "expiry_years": 0.019178082191780823,
+    "n_paths": 5000,
+    "n_batches": 10,
+    "paths_per_batch": 500,
+    "dt": 0.0006849315068493151,
+    "seed": 3019,
+    "strategy": "put_debit_spread",
+    "legs": [
+      {
+        "side": "long",
+        "option_type": "put",
+        "strike": 690,
+        "qty": 1,
+        "expiry_years": null
+      },
+      {
+        "side": "short",
+        "option_type": "put",
+        "strike": 688,
+        "qty": 1,
+        "expiry_years": null
+      }
+    ],
+    "snapshot_file": null,
+    "event_risk_high": false
+  },
+  "randomness_policy": {
+    "comparison_mode": "paired",
+    "base_seed": 3019,
+    "sensitivity_seed": 3019,
+    "crn_scope": "same_model_same_structure_friction_only",
+    "cross_model_or_cross_structure": "unpaired_independent_seeds_required"
+  },
+  "calibration": {
+    "iv_atm": 0.25,
+    "skew": -0.25,
+    "curv": 0.1,
+    "term": 0.0,
+    "rv10": null,
+    "rv20": null,
+    "jump": {
+      "mu": 0.03,
+      "sigma": 0.25,
+      "jump_lambda": 0.25,
+      "jump_mu": -0.06,
+      "jump_sigma": 0.2
+    }
+  },
+  "regime_distribution": {
+    "mean_revert|vol_expanding": 0.21,
+    "trend|vol_contracting": 0.19666666666666666,
+    "trend|vol_expanding": 0.14666666666666667,
+    "mean_revert|vol_contracting": 0.44666666666666666,
+    "dominant": "mean_revert|vol_contracting"
+  },
+  "stress": {
+    "spread_bps": 25.0,
+    "slippage_bps": 8.0,
+    "partial_fill_prob": 0.1
+  },
+  "metrics": {
+    "ev": -0.1876105366683122,
+    "pop": 0.408,
+    "pot": 0.406,
+    "profit_factor": 0.6728996381491892,
+    "avg_win": 0.945945973395323,
+    "avg_loss": -0.9688454287391959,
+    "expectancy": -0.1876105366683123,
+    "var95": -0.9758192304498002,
+    "cvar95": -0.9768142295876778,
+    "tail_p1": -0.9763841096895721,
+    "min_pl": -0.9817542084158927,
+    "max_pl": 1.010257627757212
+  },
+  "multi_seed_confidence": {
+    "n_batches": 10,
+    "paths_per_batch": 500,
+    "n_total_paths": 5000,
+    "ev_mean": -0.16690707366107896,
+    "ev_std": 0.03673071519658191,
+    "ev_5th_percentile": -0.22130299272622903,
+    "pop_mean": 0.41880000000000006,
+    "cvar_mean": -0.9769748309140371,
+    "cvar_worst": -1.0213963990616148
+  },
+  "distribution_percentiles": {
+    "p1": -0.9763841096895721,
+    "p5": -0.9758192304498002,
+    "p10": -0.970419401237176,
+    "p25": -0.970413001237176,
+    "p50": -0.970413001237176,
+    "p75": 0.9401230504376059,
+    "p90": 0.965853000069797,
+    "p95": 0.9771692698988282,
+    "p99": 0.9901253694291167
+  },
+  "sensitivity": {
+    "wide_spread_slippage_ev": -0.25628250908907296,
+    "wide_spread_slippage_pop": 0.39980000000000004,
+    "wide_spread_slippage_cvar95": -1.0088943002007928,
+    "ev_delta_real_to_stress": -0.089375435427994
+  },
+  "friction_hurdle": {
+    "ev_mid": -0.07371446796207666,
+    "ev_real": -0.16690707366107896,
+    "ev_stress": -0.25628250908907296,
+    "delta_ev_real": -0.0931926056990023,
+    "delta_ev_stress": -0.18256804112699632,
+    "ev_mid_R": -0.07508444306138344,
+    "ev_real_R": -0.17000902285959282,
+    "ev_stress_R": -0.2610454907064743
+  },
+  "breakevens": [
+    689.0311545712608
+  ],
+  "edge_attribution": {
+    "iv_rich_vs_rv": null,
+    "mean_reversion_regime_probability": 0.44666666666666666,
+    "structure_expected_move_match": 0.04055671839926711,
+    "signals_present": 2,
+    "signals_pass": 1,
+    "thresholds": {
+      "regime_prob_min": 0.2,
+      "structure_match_min": 0.05,
+      "min_signals_pass": 2
+    },
+    "explainable": false
+  },
+  "gates": {
+    "regime": "mean_revert|vol_contracting",
+    "ev_threshold_R": 0.05,
+    "cvar_threshold_R": -1.0,
+    "ev_gate": false,
+    "ev_ci_gate": false,
+    "cvar_gate": true,
+    "cvar_worst_gate": false,
+    "pop_or_pot": false,
+    "slippage_sensitivity_ok": true,
+    "stress_ev_not_catastrophic": true,
+    "allow_trade": false
+  }
+}

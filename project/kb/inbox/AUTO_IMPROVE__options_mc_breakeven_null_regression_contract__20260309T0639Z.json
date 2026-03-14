@@ -1,0 +1,52 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_breakeven_null_regression_contract",
+  "priority": "P1",
+  "created_utc": "2026-03-09T06:39:00Z",
+  "problem": "Recent options-MC artifacts are still emitting `breakevens: null` for put diagonal structures, which forces `structure_expected_move_match=0.0` and `edge_attribution.explainable=false` even when other metrics are favorable. This is a direct profitability/reliability risk because valid candidates are silently downgraded by a null breakeven path that escaped current regression coverage.",
+  "evidence": {
+    "latest_artifact": "kb/experiments/options-mc-20260309-063918.json",
+    "observed_fields": {
+      "strategy_name": "put_diagonal",
+      "breakevens": null,
+      "edge_attribution.structure_expected_move_match": 0.0,
+      "edge_attribution.explainable": false,
+      "metrics.ev": 0.3518687898929467,
+      "gates.allow_trade": false
+    },
+    "recent_pattern": [
+      "kb/experiments/options-mc-20260309-063629.json",
+      "kb/experiments/options-mc-20260309-063636.json",
+      "kb/experiments/options-mc-20260309-063708.json",
+      "kb/experiments/options-mc-20260309-063739.json",
+      "kb/experiments/options-mc-20260309-063748.json",
+      "kb/experiments/options-mc-20260309-063754.json",
+      "kb/experiments/options-mc-20260309-063801.json",
+      "kb/experiments/options-mc-20260309-063918.json"
+    ],
+    "gap_vs_current_tests": "Existing regression checks for empty-list breakevens (`[]`) did not catch null-valued breakevens (`null`)."
+  },
+  "required_change": [
+    "Harden the breakeven contract: options-MC must never emit `breakevens=null` for supported structures (vertical/diagonal); emit a non-empty numeric list or explicit typed failure state.",
+    "Normalize post-solver output so all downstream consumers receive canonical breakeven shape (`list[float]`) and cannot silently coerce to null.",
+    "If solver cannot produce valid breakevens, fail closed with explicit reason code (e.g., `BREAKEVEN_SOLVER_FAIL`) and block explainability/scoring publication paths that assume solved breakevens.",
+    "Update artifact/markdown generation to show solver failure reason when breakevens unavailable, instead of `Breakevens: None`."
+  ],
+  "acceptance_tests": [
+    "Unit test: supported put/call vertical + diagonal fixtures produce `breakevens` as non-empty numeric list (never null).",
+    "Unit test: malformed/unsolvable fixture yields explicit solver failure code and does not emit misleading explainability/scoring fields dependent on breakevens.",
+    "Regression test over latest 100 `kb/experiments/options-mc-*.json` artifacts asserts no `breakevens` null values.",
+    "Integration test: when breakevens are present, `structure_expected_move_match` is computed from those values and can be >0 when setup qualifies.",
+    "Integration test: markdown output never prints `Breakevens: None`; it prints numeric breakevens or explicit solver-failure state."
+  ],
+  "constraints": [
+    "Do not relax existing trade-risk gates.",
+    "Keep artifact schema backward compatible where possible; if adding failure code fields, document them and keep deterministic output.",
+    "Do not mask solver failures as neutral values."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "type": "FEATURE",
+  "id": "options_mc_provenance_contract",
+  "priority": "P1",
+  "problem": "Every options-MC artifact must carry immutable provenance fields (`generated_at`, `config_hash`, batch/path consistency metadata). Current artifacts are inconsistent (e.g., null generated_at in some files).",
+  "evidence": {
+    "files": [
+      "scripts/ak_options_mc.py",
+      "scripts/mc_command.py",
+      "kb/experiments/options-mc-*.json"
+    ],
+    "symptom": "Operator trust and auditability degrade when source/config cannot be cryptographically tied to result."
+  },
+  "required_change": [
+    "In `scripts/ak_options_mc.py`, write mandatory fields into every JSON artifact: `generated_at`, `config_hash`, `n_batches`, `paths_per_batch`, `n_total_paths`, `assumptions.n_paths`, `base_seed`, `crn_scope`.",
+    "Define `config_hash` as deterministic hash over run-critical config (model, structure, risk/friction params, seeds, path counts).",
+    "Add schema validation in producer and fail artifact write if mandatory provenance keys are missing.",
+    "Update `scripts/mc_command.py` to hard-fail if any mandatory provenance field is absent or invalid."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes full suite.",
+    "New test: generated options-MC JSON always contains mandatory provenance keys and non-null `generated_at`.",
+    "New test: `mc_command.py --json` fails closed when provenance keys are missing/malformed.",
+    "Manual proof: provide one fresh `kb/experiments/options-mc-*.json` sample showing full provenance populated."
+  ],
+  "constraints": [
+    "No silent fallback for missing provenance; must fail closed.",
+    "Do not alter risk gate thresholds in this ticket.",
+    "Preserve existing trace IDs and JSON stability where possible."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

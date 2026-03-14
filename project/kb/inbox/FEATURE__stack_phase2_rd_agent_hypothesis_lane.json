@@ -1,0 +1,30 @@
+{
+  "type": "FEATURE",
+  "id": "stack_phase2_rd_agent_hypothesis_lane",
+  "priority": "P2",
+  "problem": "Need RD-Agent integration for hypothesis generation without polluting execution gates.",
+  "evidence": {
+    "risk": "Model-generated hypotheses can drift into discretionary behavior unless isolated"
+  },
+  "required_change": [
+    "Create a hypothesis lane output file (`kb/experiments/hypothesis-*.json`) separate from MC execution artifacts.",
+    "Require each hypothesis to include: assumptions, expected edge mechanism, invalidation, and confidence source.",
+    "Add hard guard that hypothesis lane cannot set `TRADE_READY`; it can only propose research tasks/tickets.",
+    "Log provenance: prompt version, model id, run timestamp, config hash."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes.",
+    "Tests verify hypotheses never alter `mc_command` decision path.",
+    "Manual run generates one hypothesis artifact with required fields and provenance."
+  ],
+  "constraints": [
+    "No gate relaxation.",
+    "No autonomous trade actions.",
+    "Fail closed on malformed hypothesis outputs."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

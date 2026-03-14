@@ -1,0 +1,59 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "riskcap_first_candidate_generation",
+  "priority": "P1",
+  "created_utc": "2026-03-05T01:30:45Z",
+  "problem": "Candidate generation/ranking can surface structures that are not executable under strict user risk cap ($75), causing repeated PASS with low-quality/no actionable candidates. Risk-cap feasibility must be enforced before ranking and before MC promotion.",
+  "evidence": {
+    "latest_framework": "kb/experiments/framework-oos-20260223-213026.json",
+    "latest_options_mc": "kb/experiments/options-mc-20260305-010437.json",
+    "observed_sweep_examples": [
+      {
+        "structure": "put_diagonal",
+        "dte": 6,
+        "max_loss_est_dollars": 207.82,
+        "within_risk_cap_75": false
+      },
+      {
+        "structure": "iron_fly (proxy for iron_condor)",
+        "dte": 1,
+        "max_loss_est_dollars": 218.12,
+        "within_risk_cap_75": false
+      },
+      {
+        "structure": "put_diagonal",
+        "dte": 7,
+        "max_loss_est_dollars": 170.87,
+        "within_risk_cap_75": false
+      }
+    ],
+    "operator_observation": "Top-ranked candidates can be statistically interesting but operationally untradeable under cap; this should be filtered pre-ranking."
+  },
+  "required_change": [
+    "Implement risk-cap-first candidate generation for every structure family.",
+    "Condor/fly: enforce width*100 - credit*100 <= risk_cap during generation (not post hoc).",
+    "Debit spreads: enforce debit*100 <= risk_cap during generation.",
+    "Diagonals/calendars: enforce debit <= risk_cap/100 and minimum liquidity constraints before candidate is valid.",
+    "Ranking stage must only rank feasible candidates; infeasible candidates may be tracked as diagnostics but never promoted.",
+    "If no feasible candidates: emit exact message 'NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads.'"
+  ],
+  "acceptance_tests": [
+    "Set risk_cap=75 and run /mc sweep equivalent over multiple structures and DTE 1-7.",
+    "All returned executable candidates must satisfy max_loss <= 75.",
+    "If none satisfy, response must include exact NO_CANDIDATES string.",
+    "Output must still include top 3 diagnostics with explicit fail reasons and one closest near-miss + flip hint.",
+    "No regressions in trace/provenance fields (snapshot_id/brief_id/mc_id and mc_provenance)."
+  ],
+  "constraints": [
+    "Fail closed: WATCH/NO_TRADE preferred over forcing TRADE_READY.",
+    "Do not relax tail/stress/explainability gates to manufacture trades.",
+    "Respect strict risk cap from user config (default $75 unless overridden).",
+    "Maintain deterministic, non-discretionary behavior."
+  ],
+  "output_expected": [
+    "PR-style summary",
+    "files changed list",
+    "tests passing proof",
+    "commit hash"
+  ]
+}

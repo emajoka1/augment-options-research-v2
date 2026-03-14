@@ -1,0 +1,41 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "spot_snapshot_freshness_freeze_guard",
+  "priority": "P1",
+  "created_utc": "2026-03-09T06:08:00Z",
+  "problem": "Recent MC runs repeatedly report `data_status=OK_FALLBACK` with an unchanged `spot=671.39` for hours, but no explicit spot age/freeze guard is enforced in the run artifact. This can let stale underlying snapshots look healthy enough for ranking/monitoring logic, degrading trade-readiness reliability and potentially mis-prioritizing setups.",
+  "evidence": {
+    "run_log": "snapshots/mc_runs.jsonl",
+    "observed_window": "2026-03-09T01:38Z .. 06:08Z",
+    "observed_pattern": "Repeated entries with `data_status=OK_FALLBACK`, `data_source=cboe-delayed-public`, and identical `spot=671.39` across dozens of runs.",
+    "related_failures": [
+      ".learnings/ERRORS.md#ERR-20260306-001",
+      ".learnings/ERRORS.md#ERR-20260308-002"
+    ],
+    "risk": "If spot recency is not explicit and fail-closed, downstream logic may consume stale state as actionable context during source degradation or market-closed transitions."
+  },
+  "required_change": [
+    "Add explicit spot recency metadata to MC/heartbeat JSON outputs: `spot_snapshot.asof`, `spot_snapshot.age_seconds`, `spot_snapshot.max_age_seconds`, `spot_snapshot.fresh`.",
+    "Introduce configurable freshness SLA for spot snapshots (default strict during market-hours; relaxed/explicit policy outside market-hours) with deterministic policy output field.",
+    "Add freeze detection guard: if spot value remains unchanged beyond configurable horizon while market-hours policy requires movement-capable feed, emit `DATA_QUALITY_FAIL: stale_spot_snapshot` and fail closed (`action_state=NO_TRADE` / equivalent gate false).",
+    "Ensure fallback sources can only return `OK_FALLBACK` when spot freshness passes; otherwise emit normalized failure reason code (no ambiguous OK).",
+    "Add telemetry counters: `spot_snapshot_stale_events_total`, `spot_snapshot_freeze_events_total`, `spot_snapshot_policy_relaxed_events_total`."
+  ],
+  "acceptance_tests": [
+    "Unit test: fresh spot snapshot within SLA => `spot_snapshot.fresh=true`, no stale/freeze reason, existing decision path unchanged.",
+    "Unit test: spot snapshot age exceeds SLA during market-hours => normalized `DATA_QUALITY_FAIL: stale_spot_snapshot`, fail-closed decision, stale counter increments.",
+    "Unit test: unchanged spot beyond freeze horizon during market-hours with repeated polls => `DATA_QUALITY_FAIL: stale_spot_snapshot` (or dedicated freeze reason), freeze counter increments.",
+    "Unit test: outside market-hours policy marks relaxed mode explicitly (`spot_snapshot.policy=relaxed_out_of_hours`) and does not produce false-positive stale alerts while still surfacing age metadata.",
+    "Integration test: replay fallback feed fixture with frozen spot; verify no run is labeled healthy (`OK`/`OK_FALLBACK`) unless freshness policy passes and metadata fields are present."
+  ],
+  "constraints": [
+    "Do not relax existing fail-closed protections for data-quality failures.",
+    "Keep schema backward compatible with additive fields and normalized reason codes.",
+    "Policy logic must be timezone/session aware and deterministic in tests."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

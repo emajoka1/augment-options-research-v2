@@ -1,0 +1,33 @@
+{
+  "type": "FEATURE",
+  "id": "stack_phase1_akshare_qlib_adapter",
+  "priority": "P1",
+  "problem": "Need a safe Phase-1 integration of AKShare + Qlib as research-only data/model layer without changing trade execution behavior.",
+  "evidence": {
+    "request": "Incorporate OpenClaw + AKShare + Qlib + RD-Agent + Longport stack",
+    "current_state": "Existing MC pipeline is production-gated and fail-closed; must avoid schema breakage"
+  },
+  "required_change": [
+    "Add `src/ak_system/adapters/akshare_adapter.py` to fetch SPY proxy + macro features with explicit timestamps.",
+    "Add `src/ak_system/adapters/qlib_adapter.py` to expose model-ready factor outputs (research-only).",
+    "Create a unified adapter output schema with mandatory fields: `asof_utc`, `source`, `symbol`, `feature_set`, `quality_flags`.",
+    "Wire adapter outputs into a non-execution research artifact path (e.g., `kb/experiments/stack-phase1-*.json`) only.",
+    "Do not modify live trade approval gates in this ticket."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes full suite.",
+    "New tests validate adapter schema keys and non-null timestamps.",
+    "Manual run produces one `kb/experiments/stack-phase1-*.json` with provenance and quality flags.",
+    "Existing `/mc` command output remains schema-compatible."
+  ],
+  "constraints": [
+    "Research-only integration; no auto-trade behavior.",
+    "Fail closed if adapter data missing/late.",
+    "No silent Telegram schema changes."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

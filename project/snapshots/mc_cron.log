@@ -1,0 +1,1014 @@
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 115, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 89, in main
+    cur = run_mc_json(args.max_attempts, args.retry_delay_sec, args.skip_live)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 35, in run_mc_json
+    raise RuntimeError(p.stderr.strip() or "mc_command failed")
+RuntimeError: ERROR: [Errno 2] No such file or directory: 'node'
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 170, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 133, in main
+    live = run_live_snapshot(args.skip_live)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 48, in run_live_snapshot
+    out = _run(["node", "scripts/spy_live_snapshot.cjs"])
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 30, in _run
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 505, in run
+    with Popen(*popenargs, **kwargs) as process:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 951, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 1821, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'node'
+MC update: NO_TRADE | status=OK | SPY=682.92 | regime=Neutral (down_or_flat) | decision=NO TRADE | missing=ivCurrent
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 115, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 98, in main
+    maybe_notify(txt, args.notify)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 72, in maybe_notify
+    subprocess.run(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 505, in run
+    with Popen(*popenargs, **kwargs) as process:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 951, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 1821, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: 'openclaw'
+MC update: NO_TRADE | status=OK | SPY=682.92 | regime=Neutral (down_or_flat) | decision=NO TRADE | missing=ivCurrent
+NO_CHANGE
+NO_CHANGE
+NO_CHANGE
+MC update: WATCH | status=OK_FALLBACK | SPY=682.92 | regime=Neutral (down_or_flat) | decision=PASS | missing=none
+Updated outcomes: 22
+NO_CHANGE
+Updated outcomes: 26
+NO_CHANGE
+Updated outcomes: 27
+NO_CHANGE
+Updated outcomes: 31
+NO_CHANGE
+Updated outcomes: 32
+NO_CHANGE
+Updated outcomes: 33
+NO_CHANGE
+Updated outcomes: 34
+NO_CHANGE
+Updated outcomes: 35
+NO_CHANGE
+Updated outcomes: 36
+NO_CHANGE
+Updated outcomes: 37
+NO_CHANGE
+Updated outcomes: 38
+NO_CHANGE
+Updated outcomes: 39
+NO_CHANGE
+Updated outcomes: 40
+NO_CHANGE
+Updated outcomes: 41
+NO_CHANGE
+Updated outcomes: 42
+NO_CHANGE
+Updated outcomes: 43
+MC update: NO_TRADE | status=UNKNOWN | SPY=682.92 | regime=Neutral (down_or_flat) | decision=NO TRADE | missing=ivCurrent, realized_vol
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 1346, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 1257, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 1303, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 1252, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 1012, in _send_output
+    self.send(msg)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 952, in send
+    self.connect()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 1419, in connect
+    super().connect()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/client.py", line 923, in connect
+    self.sock = self._create_connection(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 822, in create_connection
+    for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 953, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+socket.gaierror: [Errno 8] nodename nor servname provided, or not known
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 517, in open
+    response = self._open(req, data)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 534, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 1389, in https_open
+    return self.do_open(http.client.HTTPSConnection, req,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 1349, in do_open
+    raise URLError(err)
+urllib.error.URLError: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 140, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 113, in main
+    cur = run_mc_json(args.max_attempts, args.retry_delay_sec, args.skip_live)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 38, in run_mc_json
+    raise RuntimeError(p.stderr.strip() or "mc_command failed")
+RuntimeError: ERROR: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 408, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 364, in main
+    raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
+RuntimeError: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 140, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 113, in main
+    cur = run_mc_json(args.max_attempts, args.retry_delay_sec, args.skip_live)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 38, in run_mc_json
+    raise RuntimeError(p.stderr.strip() or "mc_command failed")
+RuntimeError: ERROR: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 408, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 364, in main
+    raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
+RuntimeError: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 140, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 113, in main
+    cur = run_mc_json(args.max_attempts, args.retry_delay_sec, args.skip_live)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 38, in run_mc_json
+    raise RuntimeError(p.stderr.strip() or "mc_command failed")
+RuntimeError: ERROR: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 408, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 364, in main
+    raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
+RuntimeError: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 140, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 113, in main
+    cur = run_mc_json(args.max_attempts, args.retry_delay_sec, args.skip_live)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_notify_if_changed.py", line 38, in run_mc_json
+    raise RuntimeError(p.stderr.strip() or "mc_command failed")
+RuntimeError: ERROR: Untraceable run: missing snapshot_id in trace_ids
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 408, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/forge/.openclaw/workspace/scripts/mc_command.py", line 364, in main
+    raise RuntimeError("Untraceable run: missing snapshot_id in trace_ids")
+RuntimeError: Untraceable run: missing snapshot_id in trace_ids
+MC update: WATCH | status=OK_FALLBACK | SPY=682.92 | regime=Risk-off (down_or_flat) | decision=PASS | missing=none
+Updated outcomes: 64
+NO_CHANGE
+Updated outcomes: 65
+NO_CHANGE
+Updated outcomes: 68
+NO_CHANGE
+Updated outcomes: 70
+NO_CHANGE
+Updated outcomes: 73
+NO_CHANGE
+Updated outcomes: 74
+NO_CHANGE
+Updated outcomes: 75
+NO_CHANGE
+Updated outcomes: 77
+MC update: WATCH | status=OK_FALLBACK | SPY=685.13 | regime=Neutral (down_or_flat) | decision=PASS | missing=none
+Updated outcomes: 126
+NO_CHANGE
+Updated outcomes: 143
+NO_CHANGE
+Updated outcomes: 146
+NO_CHANGE
+Updated outcomes: 149
+NO_CHANGE
+Updated outcomes: 170
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity
+NO_CHANGE
+Traceback (most recent call last):
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 153, in <module>
+    raise SystemExit(main())
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 122, in main
+    intraday = fetch_intraday("SPY", start, end)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 56, in fetch_intraday
+    d = http_json(url)
+  File "/Users/forge/.openclaw/workspace/scripts/mc_outcome_update.py", line 21, in http_json
+    with urlopen(req, timeout=timeout) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 422: Unprocessable Entity

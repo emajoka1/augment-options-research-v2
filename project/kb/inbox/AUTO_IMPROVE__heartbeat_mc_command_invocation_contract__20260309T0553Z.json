@@ -1,0 +1,34 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "heartbeat_mc_command_invocation_contract",
+  "priority": "P1",
+  "created_utc": "2026-03-09T05:53:00Z",
+  "problem": "The heartbeat integrity loop currently calls `mc_command --json`, but on this host that binary is not guaranteed in PATH (`zsh: command not found: mc_command`). This creates false-negative monitoring blind spots: integrity checks silently fail to execute even when market pipeline health may have degraded.",
+  "evidence": {
+    "error_log": ".learnings/ERRORS.md#ERR-20260308-002",
+    "heartbeat_definition": "HEARTBEAT.md (uses `mc_command --json`)",
+    "impact": "Periodic integrity checks can fail before evaluating `spot_integrity.ok`, `mc_provenance.source_stale`, and `mc_provenance.counts_consistent`, reducing reliability of trade-readiness safeguards."
+  },
+  "required_change": [
+    "Define and enforce one canonical heartbeat command path for MC JSON (prefer explicit script invocation, e.g., `python3 scripts/mc_command.py --json`, not PATH-dependent alias).",
+    "Add a preflight command-resolution guard in the heartbeat runner: if canonical command is unavailable, emit a structured `HEARTBEAT_CHECK_FAILED` payload with reason `mc_command_unavailable` (not a generic shell error).",
+    "Update HEARTBEAT.md instructions to the canonical command so human/agent checks stay consistent.",
+    "Add telemetry counter `heartbeat_mc_command_unavailable_total` and include last failure timestamp for observability."
+  ],
+  "acceptance_tests": [
+    "Unit test: when PATH lacks `mc_command`, heartbeat still executes successfully via canonical explicit command and returns parseable JSON.",
+    "Unit test: when canonical command target is intentionally missing, heartbeat returns structured failure payload with `reason=mc_command_unavailable` and increments `heartbeat_mc_command_unavailable_total`.",
+    "Integration test: run heartbeat check end-to-end on a clean shell env (`PATH` without local wrappers) and verify required fields (`spot_integrity.ok`, `mc_provenance.source_stale`, `mc_provenance.counts_consistent`) are evaluated or explicit structured failure is emitted.",
+    "Regression test: no raw `command not found` text leaks to user-facing watchdog alerts; alerts use normalized reason code + remediation hint."
+  ],
+  "constraints": [
+    "Do not relax current fail-closed behavior for integrity/watchdog decisions.",
+    "Keep existing mc_command JSON schema contract unchanged for downstream consumers.",
+    "Changes must be additive and backward compatible for existing heartbeat automation."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

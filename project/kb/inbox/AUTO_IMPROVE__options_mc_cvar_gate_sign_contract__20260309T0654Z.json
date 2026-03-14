@@ -1,0 +1,50 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_cvar_gate_sign_contract",
+  "priority": "P1",
+  "created_utc": "2026-03-09T06:54:00Z",
+  "problem": "`gates.cvar_gate` is passing while `metrics.cvar95` is materially worse than `gates.cvar_threshold_R` in recent options-MC artifacts (e.g., cvar95=-1.7103 vs threshold=-1.0 with cvar_gate=true). This is a high-impact risk-control contract break: tail-risk gating can be misinterpreted as healthy by downstream rankers/alerts, degrading reliability and potential profitability decisions.",
+  "evidence": {
+    "latest_artifact": "kb/experiments/options-mc-20260309-065308.json",
+    "observed_fields": {
+      "metrics.cvar95": -1.7102999048277683,
+      "gates.cvar_threshold_R": -1.0,
+      "gates.cvar_gate": true,
+      "gates.allow_trade": false
+    },
+    "pattern_check": {
+      "scope": "kb/experiments/options-mc-20260309-*.json",
+      "violations_found": 144,
+      "violation_rule": "cvar_gate==true while cvar95 < cvar_threshold_R"
+    },
+    "sample_files": [
+      "kb/experiments/options-mc-20260309-001300.json",
+      "kb/experiments/options-mc-20260309-014618.json",
+      "kb/experiments/options-mc-20260309-063918.json",
+      "kb/experiments/options-mc-20260309-065308.json"
+    ]
+  },
+  "required_change": [
+    "Define and enforce one explicit CVaR gate contract: gate passes iff the chosen CVaR metric is at/above threshold under a single documented orientation (no mixed sign semantics).",
+    "Align `gates.cvar_gate`, markdown text, and JSON field naming/units so they cannot disagree (e.g., `cvar95_R` vs threshold in same unit).",
+    "Add invariant checks in artifact generation that fail closed when gate truth value is inconsistent with metric-threshold comparison.",
+    "Expose a machine-readable `cvar_gate_reason` (pass/fail with compared values) for downstream diagnostics."
+  ],
+  "acceptance_tests": [
+    "Unit test: boundary cases for CVaR gate (cvar below, equal, above threshold) produce correct boolean outcomes under documented orientation.",
+    "Unit test: generated artifact cannot have `cvar_gate=true` when compared metric violates threshold; invariant raises explicit error/fail-closed state.",
+    "Regression test over latest 200 options-MC artifacts (or synthetic replay) asserts zero contract violations of the rule used by production gate evaluator.",
+    "Integration test: markdown gate line mirrors JSON gate decision and includes compared values (metric + threshold) for auditability.",
+    "Integration test: downstream ranking/selection path ignores or blocks artifacts when CVaR gate invariant fails (no silent promotion)."
+  ],
+  "constraints": [
+    "Do not relax existing risk thresholds.",
+    "Keep backward compatibility for existing consumers where possible; if fields are renamed, provide compatibility alias/versioned schema note.",
+    "Fail closed on ambiguity or unit mismatch."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

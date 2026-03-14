@@ -1,0 +1,30 @@
+{
+  "type": "FEATURE",
+  "id": "stack_phase3_longport_optional_upgrade",
+  "priority": "P2",
+  "problem": "Need optional Longport premium feed integration as a higher-fidelity data tier with explicit fallback handling.",
+  "evidence": {
+    "current_issue": "Fallback/delayed feeds can degrade explainability and integrity confidence"
+  },
+  "required_change": [
+    "Add Longport adapter with strict credential checks and rate-limit handling.",
+    "Define tier policy: `OK_LIVE_PREMIUM` (Longport) -> `OK_LIVE` -> `OK_FALLBACK`.",
+    "Implement source arbitration with deterministic precedence and explicit `source_tier` in output.",
+    "Add integrity test ensuring spot reference resolves consistently across tiers or fails closed."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes.",
+    "Tier arbitration tests cover premium available/unavailable cases.",
+    "Manual proof: one run with Longport disabled falls back correctly with explicit tier label."
+  ],
+  "constraints": [
+    "No hard dependency on Longport for baseline operation.",
+    "No execution if source arbitration unresolved.",
+    "No schema breaks in Telegram output."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

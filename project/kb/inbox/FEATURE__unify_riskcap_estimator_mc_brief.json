@@ -1,0 +1,34 @@
+{
+  "type": "FEATURE",
+  "id": "unify_riskcap_estimator_mc_brief",
+  "priority": "P1",
+  "problem": "Risk-cap/max-loss logic is split across `scripts/spy_free_brief.py` and `scripts/mc_command.py`, creating drift risk between candidate feasibility and MC decision gates.",
+  "evidence": {
+    "files": [
+      "scripts/spy_free_brief.py",
+      "scripts/mc_command.py"
+    ],
+    "symptom": "Different layers enforce related constraints with separate logic paths; future edits can desynchronize pass/fail outcomes."
+  },
+  "required_change": [
+    "Create a shared risk estimator module (e.g., `src/ak_system/risk/estimator.py`) with canonical functions for max_loss and risk-cap feasibility.",
+    "Refactor brief candidate generation to call shared estimator for debit/credit/condor/diagonal/calendar calculations.",
+    "Refactor mc_command structural gate inputs to read from the same estimator outputs (no duplicate formulas).",
+    "Expose normalized estimator output keys in JSON artifacts (e.g., `risk_estimator.version`, `max_loss`, `risk_cap`, `feasible_under_cap`)."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes full suite.",
+    "Add regression tests asserting identical max_loss and feasibility decisions between brief and mc_command for representative structures.",
+    "Run `python3 scripts/mc_command.py --max-attempts 1 --retry-delay-sec 1 --json` and verify estimator keys are present and consistent with brief candidate payload."
+  ],
+  "constraints": [
+    "Do not relax risk/tail/stress gates.",
+    "Do not change Telegram-facing schema keys without explicit compatibility handling/tests.",
+    "Fail closed: if estimator data missing, decision remains WATCH/NO_TRADE."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

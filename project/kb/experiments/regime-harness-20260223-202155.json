@@ -1,0 +1,147 @@
+{
+  "n_paths": 300,
+  "path_model": "GBM + jump diffusion + volatility clustering",
+  "stress": {
+    "spread_widen_bps": 20.0,
+    "slippage_shock_bps": 10.0,
+    "partial_fill_prob": 0.12,
+    "gap_move_sigma": 1.75,
+    "iv_crush": -0.2,
+    "iv_spike": 0.25
+  },
+  "ranking_by_regime": {
+    "mean_revert|vol_contracting": [
+      {
+        "playbook": "mean_revert_credit",
+        "mean_r": 0.818207785303477,
+        "ci95": [
+          0.5861560405497148,
+          0.9673969395613888
+        ],
+        "n": 134
+      },
+      {
+        "playbook": "long_vol_event",
+        "mean_r": 0.17100858837785352,
+        "ci95": [
+          0.025258473119238522,
+          0.2867689763145464
+        ],
+        "n": 134
+      },
+      {
+        "playbook": "trend_debit",
+        "mean_r": 0.031624628684612646,
+        "ci95": [
+          -0.11851284913754029,
+          0.13305711870516918
+        ],
+        "n": 134
+      }
+    ],
+    "trend|vol_contracting": [
+      {
+        "playbook": "mean_revert_credit",
+        "mean_r": 0.8200817454125313,
+        "ci95": [
+          0.6059476763675714,
+          0.9660175440841169
+        ],
+        "n": 99
+      },
+      {
+        "playbook": "long_vol_event",
+        "mean_r": 0.1734508825331442,
+        "ci95": [
+          0.04375802248986186,
+          0.2943092303394173
+        ],
+        "n": 99
+      },
+      {
+        "playbook": "trend_debit",
+        "mean_r": 0.07069377192276668,
+        "ci95": [
+          -0.3218943053669918,
+          0.4892520501580636
+        ],
+        "n": 99
+      }
+    ],
+    "trend|vol_expanding": [
+      {
+        "playbook": "long_vol_event",
+        "mean_r": 0.8405929296896192,
+        "ci95": [
+          0.7428603354985751,
+          0.9572194434837679
+        ],
+        "n": 23
+      },
+      {
+        "playbook": "mean_revert_credit",
+        "mean_r": 0.2916053133078891,
+        "ci95": [
+          0.12386437492176679,
+          0.410048277563031
+        ],
+        "n": 23
+      },
+      {
+        "playbook": "trend_debit",
+        "mean_r": -0.2652784265733886,
+        "ci95": [
+          -0.584769652915723,
+          0.008278066716580651
+        ],
+        "n": 23
+      }
+    ],
+    "mean_revert|vol_expanding": [
+      {
+        "playbook": "long_vol_event",
+        "mean_r": 0.7992213015006814,
+        "ci95": [
+          0.6555443122231676,
+          0.8859186483923022
+        ],
+        "n": 44
+      },
+      {
+        "playbook": "mean_revert_credit",
+        "mean_r": 0.3205382622994706,
+        "ci95": [
+          0.1530124380990771,
+          0.4749242595092032
+        ],
+        "n": 44
+      },
+      {
+        "playbook": "trend_debit",
+        "mean_r": -0.2178664220336726,
+        "ci95": [
+          -0.3585077332415287,
+          -0.12154837942562188
+        ],
+        "n": 44
+      }
+    ]
+  },
+  "failure_modes": {
+    "trend_debit": {
+      "spread_slippage": 0.06492263779682017,
+      "gap_risk": 0.032277610230898396,
+      "iv_regime_mismatch": 0.0
+    },
+    "mean_revert_credit": {
+      "spread_slippage": 0.07094576591783817,
+      "gap_risk": 0.03831007358345493,
+      "iv_regime_mismatch": 0.22333333333333333
+    },
+    "long_vol_event": {
+      "spread_slippage": 0.06665339664843459,
+      "gap_risk": 0.03364886480143183,
+      "iv_regime_mismatch": 0.0
+    }
+  }
+}

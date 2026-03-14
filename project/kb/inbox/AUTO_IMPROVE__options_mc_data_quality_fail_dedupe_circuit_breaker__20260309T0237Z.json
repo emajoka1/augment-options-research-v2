@@ -1,0 +1,46 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_data_quality_fail_dedupe_circuit_breaker",
+  "priority": "P1",
+  "created_utc": "2026-03-09T02:37:30Z",
+  "problem": "After fail-closed RV guards, the pipeline still emits frequent FULL_REFRESH artifacts while data quality remains failed, producing repeated non-actionable outputs and potential downstream alert churn. In the latest run window, many artifacts have `data_quality_status=DATA_QUALITY_FAIL` but continue publishing full metric payloads every cycle.",
+  "evidence": {
+    "sample_window": "kb/experiments/options-mc-20260309-021024.json ... 023709.json",
+    "observed": {
+      "dq_fail_artifacts_recent_40": 19,
+      "dq_fail_with_positive_ev": 19,
+      "latest_example": {
+        "file": "kb/experiments/options-mc-20260309-023709.json",
+        "status": "FULL_REFRESH",
+        "data_quality_status": "DATA_QUALITY_FAIL: stale_realized_vol",
+        "metrics_ev": 0.3518687898929467,
+        "gates_allow_trade": false
+      }
+    },
+    "risk": "Any downstream consumer that keys off FULL_REFRESH or headline metrics (instead of gate fields) can over-notify or mis-rank candidates during prolonged feed outages."
+  },
+  "required_change": [
+    "Add a data-quality fail dedupe circuit breaker in options-MC artifact publication.",
+    "When the same `data_quality_status` reason persists and canonical inputs are unchanged within a configurable cooldown (default 30m), return `status=NO_ACTION_DQ_FAIL_DUPLICATE` and suppress full metric/brief regeneration.",
+    "Always emit a compact machine-readable heartbeat payload in dedupe mode: `generated_at`, `status`, `data_quality_status`, `dedupe_window_seconds`, `prior_artifact`.",
+    "Bypass dedupe and force FULL_REFRESH when any of these change: data-quality reason, canonical inputs hash, cooldown expiry, or manual force-refresh flag.",
+    "Add telemetry counters: `options_mc_runs_dq_fail_deduped` and `options_mc_runs_dq_fail_republished_after_cooldown`."
+  ],
+  "acceptance_tests": [
+    "Unit test: same DQ fail reason + unchanged canonical inputs + within cooldown => `status=NO_ACTION_DQ_FAIL_DUPLICATE`, no full metrics section, and `prior_artifact` populated.",
+    "Unit test: same DQ fail reason + cooldown elapsed => FULL_REFRESH allowed and `options_mc_runs_dq_fail_republished_after_cooldown` increments.",
+    "Unit test: DQ reason transition (e.g., missing_realized_vol -> stale_realized_vol or -> OK) bypasses dedupe and publishes FULL_REFRESH once.",
+    "Unit test: canonical_inputs_hash change bypasses dedupe even if DQ reason unchanged.",
+    "Integration test: replay a prolonged stale-RV fixture loop and verify dedupe reduces repeated full publications while preserving first-failure and state-transition visibility."
+  ],
+  "constraints": [
+    "Do not relax fail-closed safety gates (`allow_trade` must remain false on DQ fail).",
+    "Keep artifact schema backward compatible with additive fields and new status enum.",
+    "Deduping must not hide state transitions or first occurrence of new failure reasons."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

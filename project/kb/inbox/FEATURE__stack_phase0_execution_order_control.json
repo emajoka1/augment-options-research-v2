@@ -1,0 +1,35 @@
+{
+  "type": "FEATURE",
+  "id": "stack_phase0_execution_order_control",
+  "priority": "P0",
+  "problem": "Need explicit implementation order so Builder executes stack integration safely and in sequence.",
+  "evidence": {
+    "dependent_tickets": [
+      "stack_phase1_akshare_qlib_adapter",
+      "stack_phase2_rd_agent_hypothesis_lane",
+      "stack_phase3_longport_optional_upgrade"
+    ],
+    "risk": "Parallel or out-of-order implementation increases schema/integrity drift risk."
+  },
+  "required_change": [
+    "Implement tickets strictly in this order: phase1 -> phase2 -> phase3.",
+    "Do not start phase2 until phase1 outbox result includes full pytest proof and acceptance tests passing.",
+    "Do not start phase3 until phase2 outbox result includes full pytest proof and acceptance tests passing.",
+    "After each phase, run one manual `mc_command --json` verification and include schema diff note (no breaking changes)."
+  ],
+  "acceptance_tests": [
+    "Outbox report for each phase references previous phase completion proof.",
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` shown as passing in each phase result.",
+    "No Telegram-facing schema break across phase boundaries."
+  ],
+  "constraints": [
+    "No gate relaxation.",
+    "No direct trade automation.",
+    "Fail closed if dependency phase is incomplete."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

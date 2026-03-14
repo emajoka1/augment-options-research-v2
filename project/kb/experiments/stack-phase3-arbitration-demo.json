@@ -1,0 +1,22 @@
+{
+  "phase": "stack_phase3",
+  "longport": {
+    "asof_utc": "2026-03-05T20:39:50.626891+00:00",
+    "source": "longport_unavailable",
+    "symbol": "SPY",
+    "spot": null,
+    "quality_flags": [
+      "credentials_missing",
+      "premium_unavailable"
+    ],
+    "source_tier": "UNAVAILABLE"
+  },
+  "arbitration": {
+    "selected_source": "live",
+    "source_tier": "OK_LIVE",
+    "spot": 500.0,
+    "quality_flags": [
+      "live_ok"
+    ]
+  }
+}

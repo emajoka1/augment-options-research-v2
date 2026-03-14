@@ -1,0 +1,153 @@
+{
+  "generated_at": "2026-03-06T16:42:08.398264+00:00",
+  "config_hash": "e0b31dbb8a0e02fea5de35c52f928b160fe54209546c7f7d9bde14cd6e2f6bdb",
+  "n_batches": 10,
+  "paths_per_batch": 500,
+  "n_total_paths": 5000,
+  "base_seed": 3019,
+  "crn_scope": "same_model_same_structure_friction_only",
+  "assumptions": {
+    "model": "jump",
+    "spot": 674.505,
+    "r": 0.03,
+    "q": 0.0,
+    "expiry_years": 0.019178082191780823,
+    "n_paths": 5000,
+    "n_batches": 10,
+    "paths_per_batch": 500,
+    "dt": 0.0006849315068493151,
+    "seed": 3019,
+    "strategy": "put_diagonal",
+    "legs": [
+      {
+        "side": "short",
+        "option_type": "put",
+        "strike": 675,
+        "qty": 1,
+        "expiry_years": 0.0076712328767123295
+      },
+      {
+        "side": "long",
+        "option_type": "put",
+        "strike": 672,
+        "qty": 1,
+        "expiry_years": 0.019178082191780823
+      }
+    ],
+    "snapshot_file": null,
+    "event_risk_high": false
+  },
+  "randomness_policy": {
+    "comparison_mode": "paired",
+    "base_seed": 3019,
+    "sensitivity_seed": 3019,
+    "crn_scope": "same_model_same_structure_friction_only",
+    "cross_model_or_cross_structure": "unpaired_independent_seeds_required"
+  },
+  "calibration": {
+    "iv_atm": 0.25,
+    "skew": -0.25,
+    "curv": 0.1,
+    "term": 0.0,
+    "rv10": null,
+    "rv20": null,
+    "jump": {
+      "mu": 0.03,
+      "sigma": 0.25,
+      "jump_lambda": 0.25,
+      "jump_mu": -0.06,
+      "jump_sigma": 0.2
+    }
+  },
+  "regime_distribution": {
+    "mean_revert|vol_expanding": 0.21,
+    "trend|vol_contracting": 0.19666666666666666,
+    "trend|vol_expanding": 0.14666666666666667,
+    "mean_revert|vol_contracting": 0.44666666666666666,
+    "dominant": "mean_revert|vol_contracting"
+  },
+  "stress": {
+    "spread_bps": 30.0,
+    "slippage_bps": 8.0,
+    "partial_fill_prob": 0.1
+  },
+  "metrics": {
+    "ev": 0.18842892378146814,
+    "pop": 0.604,
+    "pot": 1.0,
+    "profit_factor": 1.3401381101121332,
+    "avg_win": 1.229150019217872,
+    "avg_loss": -1.3989335551164814,
+    "expectancy": 0.18842892378146792,
+    "var95": -1.6622808295386846,
+    "cvar95": -1.6713690181890348,
+    "tail_p1": -1.6759715161508495,
+    "min_pl": -1.6967573566708323,
+    "max_pl": 1.3724271542070556
+  },
+  "multi_seed_confidence": {
+    "n_batches": 10,
+    "paths_per_batch": 500,
+    "n_total_paths": 5000,
+    "ev_mean": 0.13203187097625363,
+    "ev_std": 0.07622534424456656,
+    "ev_5th_percentile": -0.006596349756676563,
+    "pop_mean": 0.5773999999999999,
+    "cvar_mean": -1.671040008249148,
+    "cvar_worst": -1.7353131297145765
+  },
+  "distribution_percentiles": {
+    "p1": -1.6759715161508495,
+    "p5": -1.6622808295386846,
+    "p10": -1.6548741949036274,
+    "p25": -1.6458295619327332,
+    "p50": 1.2190271304722846,
+    "p75": 1.3724271542070556,
+    "p90": 1.3724271542070556,
+    "p95": 1.3724271542070556,
+    "p99": 1.3724271542070556
+  },
+  "sensitivity": {
+    "wide_spread_slippage_ev": 0.09711721389042573,
+    "wide_spread_slippage_pop": 0.5751999999999999,
+    "wide_spread_slippage_cvar95": -1.7299266988089435,
+    "ev_delta_real_to_stress": -0.0349146570858279
+  },
+  "friction_hurdle": {
+    "ev_mid": 0.1666041404635538,
+    "ev_real": 0.13203187097625363,
+    "ev_stress": 0.09711721389042573,
+    "delta_ev_real": -0.03457226948730016,
+    "delta_ev_stress": -0.06948692657312806,
+    "ev_mid_R": 0.09818972630856533,
+    "ev_real_R": 0.07781423222193082,
+    "ev_stress_R": 0.05723694876501206
+  },
+  "breakevens": [],
+  "edge_attribution": {
+    "iv_rich_vs_rv": null,
+    "mean_reversion_regime_probability": 0.44666666666666666,
+    "structure_expected_move_match": 0.0,
+    "signals_present": 2,
+    "signals_pass": 1,
+    "thresholds": {
+      "regime_prob_min": 0.2,
+      "structure_match_min": 0.05,
+      "min_signals_pass": 2
+    },
+    "explainable": false
+  },
+  "gates": {
+    "regime": "mean_revert|vol_contracting",
+    "ev_threshold_R": 0.05,
+    "cvar_threshold_R": -1.0,
+    "ev_gate": true,
+    "ev_ci_gate": false,
+    "cvar_gate": true,
+    "cvar_worst_gate": false,
+    "pop_or_pot": true,
+    "slippage_sensitivity_ok": true,
+    "stress_ev_not_catastrophic": true,
+    "allow_trade": false
+  }
+}

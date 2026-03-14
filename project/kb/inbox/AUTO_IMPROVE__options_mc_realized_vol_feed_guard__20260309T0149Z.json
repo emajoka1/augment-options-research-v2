@@ -1,0 +1,44 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_realized_vol_feed_guard",
+  "priority": "P1",
+  "created_utc": "2026-03-09T01:49:00Z",
+  "problem": "Latest options-MC runs are repeatedly produced with `calibration.rv10=null` and `calibration.rv20=null`, which leaves `edge_attribution.iv_rich_vs_rv=null` and weakens/blocks explainable-edge logic. This creates a reliability/profitability blind spot: candidate quality cannot be validated against realized volatility, so high-EV setups are either under-justified or incorrectly rejected.",
+  "evidence": {
+    "sample_window": "kb/experiments/options-mc-20260309-*.json",
+    "observed_counts": {
+      "files_checked": 34,
+      "rv10_null_and_rv20_null": 34,
+      "iv_rich_vs_rv_null": 34
+    },
+    "example_files": [
+      "kb/experiments/options-mc-20260309-014858.json",
+      "kb/experiments/options-mc-20260309-014759.json",
+      "kb/experiments/options-mc-20260309-014631.json"
+    ]
+  },
+  "required_change": [
+    "Implement a fail-closed realized-vol input contract for options MC: before scoring/gating, either provide fresh rv10/rv20 or emit explicit status `DATA_QUALITY_FAIL: missing_realized_vol`.",
+    "Add deterministic fallback RV computation from local underlying return history when primary RV source is unavailable, with provenance fields (`rv_source`, `rv_window_bars`, `rv_asof`, `rv_freshness_seconds`).",
+    "If fallback cannot be computed with minimum bars, keep rv fields null but hard-fail ranking/trade decision with machine-readable reason code instead of silent null propagation.",
+    "Update edge attribution logic so `iv_rich_vs_rv` is computed only when RV contract passes; otherwise set `edge_attribution.explainable=false` with explicit `explainable_reason=missing_realized_vol`.",
+    "Emit a compact telemetry counter for RV-missing events to detect data feed regressions over time."
+  ],
+  "acceptance_tests": [
+    "Unit test: with valid RV inputs, artifact includes non-null rv10/rv20 and non-null `edge_attribution.iv_rich_vs_rv`.",
+    "Unit test: primary RV source unavailable but sufficient local bars exist -> fallback RV is computed, provenance fields populated, and no data-quality fail status.",
+    "Unit test: primary RV source unavailable and insufficient local bars -> artifact returns `DATA_QUALITY_FAIL: missing_realized_vol` and does not produce TRADE_READY.",
+    "Integration regression: replay latest sample window fixture; zero artifacts silently emit rv10/rv20 null without an explicit fail code.",
+    "Manual proof: provide one artifact showing primary RV source path and one showing fallback RV path, both with provenance metadata."
+  ],
+  "constraints": [
+    "Do not relax existing risk/tail/stress thresholds.",
+    "Prefer fail-closed behavior over implicit assumptions when RV is missing.",
+    "Keep artifact schema backward-compatible; additive fields are allowed."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

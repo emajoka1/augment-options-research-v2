@@ -1,0 +1,36 @@
+{
+  "type": "AUTO_BUG",
+  "id": "bot_response_timeout_guard",
+  "priority": "P0",
+  "problem": "Periodic user-visible failures occur when model/provider requests error or long-running scans stall, causing missing/late bot replies.",
+  "evidence": {
+    "symptom": "Observed `server_error` during integrity-watchdog and historical reports of think-without-reply behavior.",
+    "related_components": [
+      "cron integrity-watchdog",
+      "scripts/mc_notify_if_changed.py",
+      "scripts/mc_command.py"
+    ]
+  },
+  "required_change": [
+    "Add timeout wrapper and retry-with-backoff for watchdog/MC command invocation.",
+    "Guarantee bounded user response: if computation exceeds timeout, emit fallback status message with partial diagnostics and explicit 'still running/retrying' state.",
+    "Write structured timeout/error traces to `logs/` with request id when available.",
+    "Ensure watchdog emits at most one alert per failure window (dedupe) to avoid spam."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes full suite.",
+    "Add test that simulates provider/server_error and verifies fallback response is emitted within configured timeout.",
+    "Add test that simulates long-running command and verifies partial response path + retry behavior.",
+    "Manual proof in outbox: include sample timeout log and resulting user-facing fallback output."
+  ],
+  "constraints": [
+    "Do not suppress real integrity failures.",
+    "Do not relax trading gates.",
+    "Keep Telegram output schema stable; only add optional diagnostic fields if needed."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}

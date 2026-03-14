@@ -1,0 +1,9 @@
+{
+  "status": "ok",
+  "action_state": "WATCH",
+  "regime": "Risk-off",
+  "spot_integrity": true,
+  "trade_ready": false,
+  "data_status": "OK_FALLBACK",
+  "spot": 671.39
+}

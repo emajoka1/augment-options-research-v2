@@ -1,0 +1,36 @@
+{
+  "type": "FEATURE",
+  "id": "mc_brief_data_freshness_sla_guard",
+  "priority": "P1",
+  "problem": "The desk loop can publish market context from stale upstream snapshots when data pipelines partially fail; there is no explicit SLA gate that blocks publication if snapshot age exceeds threshold.",
+  "evidence": {
+    "files": [
+      "kb/logs",
+      "kb/experiments",
+      "scripts/mc_command.py"
+    ],
+    "symptom": "Research decisions risk being made on outdated context without a hard freshness stop."
+  },
+  "required_change": [
+    "Define a hard freshness SLA for MC inputs (e.g., max snapshot age) and expose it as config.",
+    "Fail closed in MC brief generation when any required input exceeds SLA, returning explicit stale-data reason codes.",
+    "Emit machine-readable freshness metadata in every MC brief artifact (input timestamps, max_age_seconds, pass/fail).",
+    "Add operator-facing guidance in output for stale-data recovery steps."
+  ],
+  "acceptance_tests": [
+    "Unit test: stale input timestamps trigger fail-closed status and non-zero exit path.",
+    "Unit test: fresh inputs pass and include freshness metadata block.",
+    "Regression test: partial-data mode cannot bypass stale-data guard.",
+    "Manual proof: one fresh run artifact and one stale simulated run artifact with expected statuses."
+  ],
+  "constraints": [
+    "Do not relax existing risk gates or sizing logic.",
+    "No silent fallback to stale data under any mode.",
+    "Maintain backward-compatible JSON keys where possible; additive metadata preferred."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "test evidence"
+  ]
+}

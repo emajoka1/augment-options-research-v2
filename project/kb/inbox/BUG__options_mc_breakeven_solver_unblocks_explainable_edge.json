@@ -1,0 +1,40 @@
+{
+  "type": "BUG",
+  "id": "options_mc_breakeven_solver_unblocks_explainable_edge",
+  "priority": "P1",
+  "problem": "Recent options MC artifacts are consistently produced with empty `breakevens`, which forces `structure_expected_move_match` to 0.0 and `edge_attribution.explainable=false`; this appears to hard-block otherwise positive-EV candidates at the gate layer and suppresses trade-ready output.",
+  "evidence": {
+    "files": [
+      "kb/experiments/options-mc-20260309-012137.json",
+      "kb/experiments/options-mc-20260309-013337.json"
+    ],
+    "observations": [
+      "`breakevens: []`",
+      "`edge_attribution.structure_expected_move_match: 0.0`",
+      "`edge_attribution.explainable: false`",
+      "`gates.allow_trade: false` across latest batch despite positive EV/POP"
+    ]
+  },
+  "required_change": [
+    "Fix breakeven computation for multi-leg option structures (at minimum put diagonals), including robust root-bracketing over realistic underlying price ranges at evaluation horizon.",
+    "Guarantee deterministic, sorted breakeven output schema: numeric array (possibly one or multiple roots) or explicit null with `breakeven_reason` when mathematically undefined.",
+    "Recompute `structure_expected_move_match` using solved breakevens (or explicit undefined path), then derive `edge_attribution.explainable` from true inputs rather than implicit empty-list fallback.",
+    "Add fail-loud telemetry when breakeven solver fails convergence (reason code + structure metadata) so silent profitability suppression is detectable."
+  ],
+  "acceptance_tests": [
+    "Unit test: canonical put diagonal fixture returns non-empty, sorted numeric breakeven(s) and no solver error reason.",
+    "Unit test: intentionally non-crossing payoff case returns `breakevens=null` with explicit `breakeven_reason`, never empty array.",
+    "Integration test: for a fixture where EV/POP pass and cvar_worst gate is satisfied, corrected breakevens produce non-zero `structure_expected_move_match` and `edge_attribution.explainable=true`.",
+    "Regression test over latest sample window (e.g., last 20 options-mc artifacts in test fixtures): no artifact emits `breakevens: []`."
+  ],
+  "constraints": [
+    "Do not relax any risk thresholds or gate cutoffs.",
+    "Keep existing artifact contract backward-compatible; additive fields allowed (`breakeven_reason`, solver diagnostics).",
+    "No code paths may silently coerce solver failure into empty list output."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

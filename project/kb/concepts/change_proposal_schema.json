@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChangeProposal",
+  "type": "object",
+  "required": [
+    "proposal_id",
+    "created_at",
+    "author_mode",
+    "title",
+    "summary",
+    "baseline_metrics",
+    "candidate_metrics",
+    "monte_carlo",
+    "out_of_sample_delta",
+    "tests_passed",
+    "rollback_plan",
+    "status"
+  ],
+  "properties": {
+    "proposal_id": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "author_mode": {"type": "string", "const": "RESEARCH_AGENT"},
+    "title": {"type": "string"},
+    "summary": {"type": "string"},
+    "target_files": {"type": "array", "items": {"type": "string"}},
+    "baseline_metrics": {"$ref": "#/$defs/metrics"},
+    "candidate_metrics": {"$ref": "#/$defs/metrics"},
+    "monte_carlo": {
+      "type": "object",
+      "required": ["scenarios", "p5_return", "p50_return", "p95_return"],
+      "properties": {
+        "scenarios": {"type": "array", "items": {"type": "string"}},
+        "p5_return": {"type": "number"},
+        "p50_return": {"type": "number"},
+        "p95_return": {"type": "number"}
+      }
+    },
+    "out_of_sample_delta": {"type": "number"},
+    "tests_passed": {"type": "boolean"},
+    "rollback_plan": {"type": "string"},
+    "approval_required": {"type": "boolean"},
+    "status": {"type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "UNVERIFIED"]}
+  },
+  "$defs": {
+    "metrics": {
+      "type": "object",
+      "required": [
+        "win_rate",
+        "avg_r",
+        "max_drawdown",
+        "tail_loss",
+        "slippage_sensitivity",
+        "sample_size"
+      ],
+      "properties": {
+        "win_rate": {"type": "number"},
+        "avg_r": {"type": "number"},
+        "max_drawdown": {"type": "number"},
+        "tail_loss": {"type": "number"},
+        "slippage_sensitivity": {"type": "number"},
+        "sample_size": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

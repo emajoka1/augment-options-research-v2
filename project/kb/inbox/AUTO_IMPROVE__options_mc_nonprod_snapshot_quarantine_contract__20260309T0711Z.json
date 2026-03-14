@@ -1,0 +1,46 @@
+{
+  "type": "AUTO_IMPROVE",
+  "id": "options_mc_nonprod_snapshot_quarantine_contract",
+  "priority": "P1",
+  "created_utc": "2026-03-09T07:11:00Z",
+  "problem": "`kb/experiments` is ingesting options-MC artifacts generated from pytest temp-chain fixtures (e.g., `/private/var/.../pytest-of-forge/...`). This contaminates production experiment history with non-production inputs, breaks dedupe assumptions via synthetic canonical hashes, and can degrade profitability/reliability by letting test scenarios influence downstream ranking/monitoring.",
+  "evidence": {
+    "latest_artifacts": [
+      "kb/experiments/options-mc-20260309-070949.json",
+      "kb/experiments/options-mc-20260309-070950.json"
+    ],
+    "observed_fields": {
+      "options-mc-20260309-070949.json.canonical_inputs.chain_snapshot.path": "/private/var/folders/.../pytest-of-forge/.../test_rv_fallback_populates_con0/chain_no_returns.json",
+      "options-mc-20260309-070950.json.canonical_inputs.chain_snapshot.path": "/private/var/folders/.../pytest-of-forge/.../test_missing_rv_fails_closed_a0/chain_short_returns.json",
+      "status": "FULL_REFRESH"
+    },
+    "pattern_check": {
+      "scope": "kb/experiments/options-mc-20260309-07*.json",
+      "nonprod_fixture_hits": 2,
+      "rule": "chain snapshot path contains pytest temp fixture markers (e.g., 'pytest-of-' or test tmp dirs)"
+    }
+  },
+  "required_change": [
+    "Enforce an input-environment contract: artifacts written to production `kb/experiments` must use approved live/sim data roots; reject/quarantine test fixture paths.",
+    "Add `run_context` classification (`prod|staging|test`) derived from input provenance; only `prod` may publish into `kb/experiments`.",
+    "On non-prod detection, fail closed with machine-readable status (e.g., `NO_ACTION_NONPROD_INPUT`) and write to a separate test/staging artifact sink (or skip publication).",
+    "Add provenance guardrails so canonical hash/dedupe logic ignores blocked non-prod runs and cannot churn production telemetry."
+  ],
+  "acceptance_tests": [
+    "Unit test: snapshot path containing `pytest-of-` is classified `run_context=test` and blocked from publishing to `kb/experiments`.",
+    "Unit test: approved production path (or null live feed path) remains `run_context=prod` and publishes normally.",
+    "Integration test: replay pytest fixture inputs; command returns `NO_ACTION_NONPROD_INPUT` (or equivalent), and no new file appears under `kb/experiments`.",
+    "Integration test: blocked non-prod runs do not increment production telemetry counters used by dedupe/circuit-breaker logic.",
+    "Regression test: production cron path still emits expected artifacts and schema when inputs are valid prod provenance."
+  ],
+  "constraints": [
+    "Do not weaken existing DQ fail-closed behavior.",
+    "Do not break schema compatibility for existing prod artifacts; additive fields/statuses only.",
+    "Keep provenance checks deterministic and auditable."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox result path",
+    "test evidence"
+  ]
+}

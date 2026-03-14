@@ -1,0 +1,42 @@
+{
+  "proposal_id": "cp-20260223-201955",
+  "created_at": "2026-02-23T20:19:55.294694+00:00",
+  "author_mode": "RESEARCH_AGENT",
+  "title": "Update scorecard regime and volatility thresholds",
+  "summary": "Candidate update calibrated from recent trades and stress-tested vs baseline.",
+  "target_files": [
+    "kb/rules/scorecard_rules.json",
+    "kb/playbooks/pre_trade_checklist.md"
+  ],
+  "baseline_metrics": {
+    "win_rate": 0.6,
+    "avg_r": -0.04,
+    "max_drawdown": 1.87,
+    "tail_loss": -0.35,
+    "slippage_sensitivity": 6.4,
+    "sample_size": 40
+  },
+  "candidate_metrics": {
+    "win_rate": 0.6857142857142857,
+    "avg_r": 0.1417142857142857,
+    "max_drawdown": 0.35,
+    "tail_loss": -0.3,
+    "slippage_sensitivity": 5.371428571428571,
+    "sample_size": 35
+  },
+  "monte_carlo": {
+    "scenarios": [
+      "vol_expansion",
+      "gap_down",
+      "gap_up"
+    ],
+    "p5_return": -5.148300000000002,
+    "p50_return": -2.4169,
+    "p95_return": 0.3539000000000001
+  },
+  "out_of_sample_delta": 0.48550000000000015,
+  "tests_passed": true,
+  "rollback_plan": "Restore latest kb snapshot from /snapshots and revert approved decision file.",
+  "approval_required": true,
+  "status": "PENDING"
+}

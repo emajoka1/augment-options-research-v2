@@ -1,0 +1,37 @@
+{
+  "status": "VERIFIED",
+  "baseline_metrics": {
+    "win_rate": 0.6,
+    "avg_r": -0.04,
+    "max_drawdown": 1.87,
+    "tail_loss": -0.35,
+    "slippage_sensitivity": 6.4,
+    "sample_size": 40
+  },
+  "candidate_metrics": {
+    "win_rate": 0.6857142857142857,
+    "avg_r": 0.1417142857142857,
+    "max_drawdown": 0.35,
+    "tail_loss": -0.3,
+    "slippage_sensitivity": 5.371428571428571,
+    "sample_size": 35
+  },
+  "out_of_sample_delta": 0.48550000000000015,
+  "monte_carlo": {
+    "scenarios": [
+      "vol_expansion",
+      "gap_down",
+      "gap_up"
+    ],
+    "p5_return": -5.148300000000002,
+    "p50_return": -2.4169,
+    "p95_return": 0.3539000000000001
+  },
+  "tests_required": [
+    "unit",
+    "backtest_or_replay",
+    "monte_carlo",
+    "ab_vs_baseline"
+  ],
+  "tests_passed": true
+}

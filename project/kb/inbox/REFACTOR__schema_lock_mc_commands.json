@@ -1,0 +1,35 @@
+{
+  "type": "REFACTOR",
+  "id": "schema_lock_mc_commands",
+  "priority": "P1",
+  "problem": "`/mc prove_trade_ready` and `/mc why_no_candidates` outputs can drift as fields evolve, risking Telegram contract breakage and operator confusion.",
+  "evidence": {
+    "files": [
+      "scripts/mc_command.py",
+      "scripts/mc_why.py"
+    ],
+    "symptom": "Recent rapid evolution introduced key renames/additions; no schema-lock tests currently enforce compatibility."
+  },
+  "required_change": [
+    "Define explicit JSON schemas (or golden contract assertions) for `mc_command --json` prove-trade-ready fields and `mc_why` diagnostic fields.",
+    "Add tests that fail on missing/renamed required keys: trace_ids, spot_integrity, mc_provenance mandatory fields, trade_ready_rule core metrics, no-candidates reason path.",
+    "Add backward-compat mapping test for legacy keys where needed.",
+    "Document contract in a reference file under `docs/` or `kb/` and link in test comments."
+  ],
+  "acceptance_tests": [
+    "`PYTHONPATH=src ./.venv/bin/python -m pytest -q` passes full suite.",
+    "Schema tests pass and fail intentionally when required keys are removed locally.",
+    "Manual run: `python3 scripts/mc_command.py --max-attempts 1 --retry-delay-sec 1 --json` includes all required keys.",
+    "Manual run: `python3 scripts/mc_why.py` prints schema-locked diagnostics including stale-source marker."
+  ],
+  "constraints": [
+    "Do not change Telegram-facing key names without compatibility tests.",
+    "No gate-threshold changes in this ticket.",
+    "Fail closed on schema mismatch in tests."
+  ],
+  "output_expected": [
+    "commit hash",
+    "outbox report path",
+    "pytest proof"
+  ]
+}
