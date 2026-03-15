@@ -17,6 +17,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "config" / "steady_compounder_mode.json"
 
+STRUCTURAL_QUALITY_BY_TIER = {
+    1: 0.70,  # VIX <= 15
+    2: 0.65,  # VIX 15.01 - 19.99
+    3: 0.52,  # VIX 20.00 - 27.99
+    4: 0.45,  # VIX 28.00 - 35.99
+    5: 0.40,  # VIX >= 36
+}
+HARD_FLOOR = 0.40
+
 
 def fail(reasons, code="PASS"):
     return {"decision": code, "approved": False, "reasons": reasons}
@@ -38,7 +47,29 @@ def main() -> int:
     ov = payload.get("overrides", {}) or {}
 
     sg = cfg["structural_gate"]
-    structural_quality_min = float((ov.get("structural_quality_min") if ov.get("structural_quality_min") is not None else sg["min_quality_score"]))
+    # Dynamic runtime structural threshold by active regime tier; config min_quality_score remains fallback.
+    tier = r.get("tier")
+    tier_dynamic = STRUCTURAL_QUALITY_BY_TIER.get(int(tier)) if isinstance(tier, int) or (isinstance(tier, str) and str(tier).isdigit()) else None
+    if tier_dynamic is None and isinstance(r.get("vix"), (int, float)):
+        v = float(r.get("vix"))
+        if v <= 15:
+            tier_dynamic = 0.70
+        elif v < 20:
+            tier_dynamic = 0.65
+        elif v < 28:
+            tier_dynamic = 0.52
+        elif v < 36:
+            tier_dynamic = 0.45
+        else:
+            tier_dynamic = 0.40
+
+    structural_quality_min = float(
+        ov.get("structural_quality_min")
+        if ov.get("structural_quality_min") is not None
+        else (tier_dynamic if tier_dynamic is not None else sg.get("min_quality_score", 0.65))
+    )
+    structural_quality_min = max(structural_quality_min, HARD_FLOOR)
+
     if float(s.get("quality", -1)) < structural_quality_min:
         reasons.append("structural_quality_below_threshold")
     if sg["require_clean_structural_r"] and not bool(s.get("structural_r_clean")):
