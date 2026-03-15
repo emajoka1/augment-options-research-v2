@@ -740,7 +740,19 @@ def main():
     context = regime_snapshot(spot)
     vol = vol_state(rows, context["realizedVol"].get("rv10"), context["realizedVol"].get("rv20"))
 
+    rows_pre_filter = len(rows)
+    rows_post_filter = len([r for r in rows if r.get("liquid")])
+
     candidates = build_candidates(rows) if rows else {"debit": (None, None), "credit": (None, None), "condor": (None, None, None, None)}
+
+    data_quality_reason = None
+    if rows_pre_filter == 0 and not live_fresh:
+        data_quality_reason = "DATA_QUALITY_FAIL: chain_unavailable_or_stale (live_is_fresh=false, rows=0)"
+    elif rows_pre_filter > 0 and rows_post_filter == 0:
+        data_quality_reason = (
+            f"DATA_QUALITY_FAIL: chain_available_but_no_liquid_strikes "
+            f"(rows_pre_filter={rows_pre_filter}, rows_post_filter={rows_post_filter}, min_oi={MIN_OI}, min_vol={MIN_VOL})"
+        )
 
     analyses = []
     analyses.append(build_trade("debit", list(candidates["debit"]), spot, vol, context))
@@ -750,6 +762,7 @@ def main():
     analyses.sort(key=lambda x: x["score"]["Total"], reverse=True)
 
     # Always provide top-3 view (even if PASS) with explicit fail reasons.
+    fallback_gate = data_quality_reason or "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
     for t in ["debit", "credit", "condor"]:
         if not any(a.get("type") == t for a in analyses):
             analyses.append({
@@ -757,7 +770,7 @@ def main():
                 "decision": "PASS",
                 "score": {"Total": 0},
                 "ticket": None,
-                "gateFailures": ["NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."],
+                "gateFailures": [fallback_gate],
                 "whys": [],
                 "counterfactuals": {},
                 "maxLossPerContract": None,
@@ -801,10 +814,12 @@ def main():
         final_decision = "NO TRADE"
     elif not analyses:
         final_decision = "PASS"
-        no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+        no_candidates_reason = data_quality_reason or "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
     else:
         final_decision = analyses[0]["decision"]
-        if all(any("NO_CANDIDATES:" in g for g in (a.get("gateFailures") or [])) for a in analyses):
+        if data_quality_reason:
+            no_candidates_reason = data_quality_reason
+        elif all(any("NO_CANDIDATES:" in g for g in (a.get("gateFailures") or [])) for a in analyses):
             no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
         elif all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
             no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
