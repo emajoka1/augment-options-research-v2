@@ -30,6 +30,8 @@ MAX_RISK_DOLLARS = float(os.environ.get("SPY_MAX_RISK_DOLLARS", "250"))
 MIN_DEBIT = float(os.environ.get("SPY_MIN_DEBIT", "0.05"))
 MIN_CREDIT = float(os.environ.get("SPY_MIN_CREDIT", "0.05"))
 MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "25"))
+SPREAD_WIDTHS = [1, 2, 3]
+DTE_WINDOWS = [(0, 7), (7, 14), (14, 21), (21, 45)]
 
 
 def risk_cap_dollars() -> float:

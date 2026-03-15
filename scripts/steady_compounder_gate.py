@@ -11,7 +11,7 @@ Input JSON (stdin or --input):
 """
 
 from __future__ import annotations
-import argparse, json, sys
+import argparse, json, os, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,15 +50,23 @@ def main() -> int:
     # Dynamic runtime structural threshold by active regime tier; config min_quality_score remains fallback.
     tier = r.get("tier")
     tier_dynamic = STRUCTURAL_QUALITY_BY_TIER.get(int(tier)) if isinstance(tier, int) or (isinstance(tier, str) and str(tier).isdigit()) else None
-    if tier_dynamic is None and isinstance(r.get("vix"), (int, float)):
-        v = float(r.get("vix"))
+
+    vix_value = r.get("vix")
+    if not isinstance(vix_value, (int, float)):
+        try:
+            vix_value = float(os.environ.get("CURRENT_VIX")) if os.environ.get("CURRENT_VIX") is not None else None
+        except Exception:
+            vix_value = None
+
+    if tier_dynamic is None and isinstance(vix_value, (int, float)):
+        v = float(vix_value)
         if v <= 15:
             tier_dynamic = 0.70
-        elif v < 20:
+        elif v <= 19.99:
             tier_dynamic = 0.65
-        elif v < 28:
+        elif v <= 27.99:
             tier_dynamic = 0.52
-        elif v < 36:
+        elif v <= 35.99:
             tier_dynamic = 0.45
         else:
             tier_dynamic = 0.40
