@@ -102,6 +102,40 @@ def get_yahoo_spot(symbol: str = "SPY") -> Optional[float]:
     return None
 
 
+def get_yahoo_vix() -> Optional[float]:
+    try:
+        d = _http_json("https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1m&range=1d")
+        m = (((d.get("chart") or {}).get("result") or [{}])[0].get("meta") or {})
+        px = m.get("regularMarketPrice") or m.get("previousClose")
+        if isinstance(px, (int, float)):
+            return float(px)
+    except Exception:
+        return None
+    return None
+
+
+def load_thorp_policy() -> Dict[str, Any]:
+    p = ROOT / "config" / "thorp_protocol_v2.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
+def classify_vix_tier(vix: Optional[float], policy: Dict[str, Any]) -> Dict[str, Any]:
+    tiers = ((policy.get("regime") or {}).get("tiers") or [])
+    if not isinstance(vix, (int, float)):
+        return {"tier": None, "label": "UNKNOWN", "vix": vix}
+    for t in tiers:
+        lo = t.get("vix_min")
+        hi = t.get("vix_max")
+        if (lo is None or vix >= float(lo)) and (hi is None or vix <= float(hi)):
+            return {"tier": t.get("tier"), "label": t.get("label"), "vix": float(vix)}
+    return {"tier": None, "label": "UNKNOWN", "vix": float(vix)}
+
+
 def _extract_json_blob(text: str) -> Dict[str, Any]:
     # Supports tools that may print extra lines before/after JSON.
     start = text.find("{")
@@ -398,10 +432,27 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any], freshness_s
     ev_mean_r = None
     ev_stress_mean_r = None
     pl_p5_r = None
-    pl_p5_threshold_r = -0.50
     cvar_worst_r = None
     delta_ev_stress_mean_r = None
     mc_rule_failures = []
+
+    # THORP v2 dynamic regime-aware thresholds
+    thorp = load_thorp_policy()
+    vix_spot = get_yahoo_vix()
+    regime_tier = classify_vix_tier(vix_spot, thorp)
+    tier_key = f"tier_{regime_tier.get('tier')}" if regime_tier.get("tier") else None
+
+    edge_cfg = ((thorp.get("gate_architecture") or {}).get("tier_a_edge_adaptive") or {})
+    surv_cfg = ((thorp.get("gate_architecture") or {}).get("tier_b_survival_fixed") or {})
+    dyn_struct_q = (thorp.get("dynamic_structural_quality_min") or {})
+    dyn_risk = (thorp.get("dynamic_risk_per_trade_pct") or {})
+
+    ev_seed_p5_threshold_r = float(edge_cfg.get("ev_seed_p5_min_r", -0.05))
+    stress_delta_threshold_r = float(edge_cfg.get("stress_delta_ev_min_r", -0.15))
+    pl_p5_threshold_r = float(surv_cfg.get("pl_p5_min_r", -0.50))
+    cvar_threshold_r = float(surv_cfg.get("cvar95_min_r", -0.90))
+    structural_quality_min = float(dyn_struct_q.get(tier_key, 0.65)) if tier_key else 0.65
+    risk_per_trade_pct_range = dyn_risk.get(tier_key) if tier_key else None
 
     r_unit = None
     r_unit_source = "unavailable"
@@ -441,15 +492,21 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any], freshness_s
         pass
 
     mc_ready = True
+    # Tier B: survival gates (fixed)
     if pl_p5_r is None or pl_p5_r <= pl_p5_threshold_r:
         mc_ready = False
-        mc_rule_failures.append("pl_p5_not_above_threshold")
-    if cvar_worst_r is None or cvar_worst_r <= -1.0:
+        mc_rule_failures.append("pl_p5_below_threshold")
+    if cvar_worst_r is None or cvar_worst_r <= cvar_threshold_r:
         mc_ready = False
-        mc_rule_failures.append("cvar_worst_not_above_-1R")
-    if delta_ev_stress_mean_r is None or delta_ev_stress_mean_r < -0.05:
+        mc_rule_failures.append("cvar95_below_threshold")
+
+    # Tier A: adaptive edge gates
+    if ev_seed_p5_r is None or ev_seed_p5_r <= ev_seed_p5_threshold_r:
         mc_ready = False
-        mc_rule_failures.append("stress_delta_ev_mean_below_-0.05R")
+        mc_rule_failures.append("ev_seed_p5_below_threshold")
+    if delta_ev_stress_mean_r is None or delta_ev_stress_mean_r < stress_delta_threshold_r:
+        mc_ready = False
+        mc_rule_failures.append("stress_delta_ev_below_threshold")
 
     # Explainability gate is data-tier aware (avoid penalizing fallback feeds as if they were full live).
     signals_pass = edge.get("signals_pass")
@@ -522,8 +579,20 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any], freshness_s
             "bucket": "hostile" if str((tb.get("Regime") or {}).get("riskState", "")).lower() == "risk-off" else "neutral",
             "extreme_vol": str(((tb.get("Volatility State") or {}).get("classifier") or {}).get("regime", "")).upper() == "EXTREME_VOL",
             "short_premium": bool(top.get("type") in {"credit", "condor", "iron_condor", "iron_fly"}),
+            "vix": vix_spot,
+            "tier": regime_tier.get("tier"),
+            "tier_label": regime_tier.get("label"),
         },
         "allocation": load_allocation_state(),
+        "overrides": {
+            "structural_quality_min": structural_quality_min,
+            "mc_gate": {
+                "ev_seed_p5_min_r": ev_seed_p5_threshold_r,
+                "pl_p5_min_r": pl_p5_threshold_r,
+                "cvar95_min_r": cvar_threshold_r,
+                "stress_delta_ev_min_r": stress_delta_threshold_r,
+            },
+        },
     }
     steady_gate = run_steady_gate(steady_payload)
     steady_ok = bool(steady_gate.get("approved"))
@@ -562,14 +631,20 @@ def normalize(live: Optional[Dict[str, Any]], brief: Dict[str, Any], freshness_s
             "r_structural": r_unit,
             "r_structural_source": r_unit_source,
             "r_minpl_debug": r_minpl_debug,
+            "regime_tier": regime_tier,
             "ev_mean_R": ev_mean_r,
             "ev_seed_p5_R": ev_seed_p5_r,
             "ev_seed_p5_min_batches": ev_seed_p5_min_batches,
+            "ev_seed_p5_threshold_R": ev_seed_p5_threshold_r,
             "ev_stress_mean_R": ev_stress_mean_r,
             "pl_p5_R": pl_p5_r,
             "pl_p5_threshold_R": pl_p5_threshold_r,
             "cvar_worst_R": cvar_worst_r,
+            "cvar_threshold_R": cvar_threshold_r,
             "stress_delta_ev_mean_R": delta_ev_stress_mean_r,
+            "stress_delta_threshold_R": stress_delta_threshold_r,
+            "structural_quality_min": structural_quality_min,
+            "risk_per_trade_pct_range": risk_per_trade_pct_range,
             "explainable_edge_raw": edge.get("explainable"),
             "explainability_signals_pass": signals_pass,
             "explainability_tiered_pass": explainability_ok,

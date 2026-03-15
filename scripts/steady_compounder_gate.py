@@ -35,9 +35,11 @@ def main() -> int:
     m = payload.get("mc", {})
     r = payload.get("regime", {})
     a = payload.get("allocation", {})
+    ov = payload.get("overrides", {}) or {}
 
     sg = cfg["structural_gate"]
-    if float(s.get("quality", -1)) < float(sg["min_quality_score"]):
+    structural_quality_min = float((ov.get("structural_quality_min") if ov.get("structural_quality_min") is not None else sg["min_quality_score"]))
+    if float(s.get("quality", -1)) < structural_quality_min:
         reasons.append("structural_quality_below_threshold")
     if sg["require_clean_structural_r"] and not bool(s.get("structural_r_clean")):
         reasons.append("structural_r_not_clean")
@@ -45,13 +47,19 @@ def main() -> int:
         reasons.append("invalidation_not_1r_definable")
 
     mg = cfg["mc_gate"]
-    if float(m.get("ev_seed_p5_r", -999)) <= float(mg["ev_seed_p5_min_r"]):
+    mg_ov = ov.get("mc_gate", {}) or {}
+    ev_seed_p5_min_r = float(mg_ov.get("ev_seed_p5_min_r", mg["ev_seed_p5_min_r"]))
+    pl_p5_min_r = float(mg_ov.get("pl_p5_min_r", mg["pl_p5_min_r"]))
+    cvar95_min_r = float(mg_ov.get("cvar95_min_r", mg["cvar95_min_r"]))
+    stress_delta_ev_min_r = float(mg_ov.get("stress_delta_ev_min_r", mg["stress_delta_ev_min_r"]))
+
+    if float(m.get("ev_seed_p5_r", -999)) <= ev_seed_p5_min_r:
         reasons.append("ev_seed_p5_below_threshold")
-    if float(m.get("pl_p5_r", -999)) <= float(mg["pl_p5_min_r"]):
+    if float(m.get("pl_p5_r", -999)) <= pl_p5_min_r:
         reasons.append("pl_p5_below_threshold")
-    if float(m.get("cvar95_r", -999)) <= float(mg["cvar95_min_r"]):
+    if float(m.get("cvar95_r", -999)) <= cvar95_min_r:
         reasons.append("cvar95_below_threshold")
-    if float(m.get("stress_delta_ev_r", -999)) < float(mg["stress_delta_ev_min_r"]):
+    if float(m.get("stress_delta_ev_r", -999)) < stress_delta_ev_min_r:
         reasons.append("stress_delta_ev_below_threshold")
     if mg["require_explainable"] and not bool(m.get("explainable")):
         reasons.append("edge_not_explainable")
