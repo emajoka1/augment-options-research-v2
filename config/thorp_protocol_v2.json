@@ -1,0 +1,100 @@
+{
+  "codename": "THORP_PROTOCOL",
+  "version": "2.0.0",
+  "last_updated": "2026-03-15",
+  "philosophy": "Survive first. Compound second. Never confuse precision with accuracy.",
+  "regime": {
+    "tiers": [
+      {"tier": 1, "label": "LOW_VOL", "vix_max": 15.0},
+      {"tier": 2, "label": "NORMAL_VOL", "vix_min": 15.01, "vix_max": 19.99},
+      {"tier": 3, "label": "ELEVATED_VOL", "vix_min": 20.0, "vix_max": 27.99},
+      {"tier": 4, "label": "HIGH_VOL", "vix_min": 28.0, "vix_max": 35.99},
+      {"tier": 5, "label": "CRISIS_VOL", "vix_min": 36.0}
+    ],
+    "persistence_confirm_readings": 3
+  },
+  "gate_architecture": {
+    "tier_a_edge_adaptive": {
+      "ev_seed_p5_min_r": -0.05,
+      "stress_delta_ev_min_r": -0.15,
+      "ev_seed_p5_bands": {
+        "strong": ">0.03",
+        "standard": ">0.00",
+        "marginal": ">-0.05"
+      },
+      "stress_delta_ev_bands": {
+        "stress_resilient": ">=-0.03",
+        "stress_tolerant": ">=-0.10",
+        "stress_aware": ">=-0.15"
+      }
+    },
+    "tier_b_survival_fixed": {
+      "cvar95_min_r": -0.90,
+      "pl_p5_min_r": -0.50
+    }
+  },
+  "stress_shock_calibration": {
+    "tier_1": 1.60,
+    "tier_2": 1.45,
+    "tier_3": 1.30,
+    "tier_4": 1.20,
+    "tier_5": 1.15
+  },
+  "dynamic_structural_quality_min": {
+    "tier_1": 0.70,
+    "tier_2": 0.65,
+    "tier_3": 0.52,
+    "tier_4": 0.45,
+    "tier_5": 0.40,
+    "hard_floor": 0.40
+  },
+  "dynamic_risk_per_trade_pct": {
+    "tier_1": [0.75, 1.00],
+    "tier_2": [0.75, 1.00],
+    "tier_3": [1.00, 1.25],
+    "tier_4": [0.75, 1.00],
+    "tier_5": [0.50, 0.75]
+  },
+  "composite_grade_sizing": {
+    "A": 1.00,
+    "B": 1.00,
+    "C": 0.75,
+    "D": 0.60,
+    "mapping": [
+      "STRONG_EDGE + STRESS_RESILIENT -> A",
+      "STANDARD_EDGE + STRESS_TOLERANT -> B",
+      "MARGINAL_EDGE + STRESS_TOLERANT -> C",
+      "MARGINAL_EDGE + STRESS_AWARE -> D",
+      "else -> D"
+    ]
+  },
+  "static_non_negotiables": {
+    "require_clean_structural_r": true,
+    "require_1r_invalidation": true,
+    "explainable_required": true,
+    "max_trades_day": 3,
+    "max_trades_week": 6,
+    "daily_loss_cap_r": -2.5,
+    "max_correlated_exposure_pct": 70,
+    "min_oi": 1000,
+    "min_volume": 100,
+    "max_single_leg_spread_pct": 10,
+    "max_multi_leg_spread_pct": 5,
+    "max_spread_bps": 25,
+    "min_debit": 0.05,
+    "min_credit": 0.05,
+    "no_auto_execution": true
+  },
+  "override": {
+    "enabled": true,
+    "fields": ["REGIME_OVERRIDE", "REGIME_OVERRIDE_REASON", "REGIME_OVERRIDE_EXPIRY"],
+    "only_loosen_thresholds": true,
+    "reject_if_tighter_than_market_regime": true
+  },
+  "required_logs": {
+    "regime_header_each_cycle": true,
+    "regime_transition_event": true,
+    "near_miss_on_watch": true,
+    "weekly_summary_schedule": "Sunday 18:00 UTC"
+  }
+}

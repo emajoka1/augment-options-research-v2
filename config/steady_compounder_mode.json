@@ -18,12 +18,16 @@
     "require_1r_invalidation": true
   },
   "mc_gate": {
-    "ev_seed_p5_min_r": 0.03,
+    "ev_seed_p5_min_r": -0.05,
     "pl_p5_min_r": -0.5,
     "cvar95_min_r": -0.9,
-    "stress_delta_ev_min_r": -0.05,
-    "require_explainable": true
-  },
+    "stress_delta_ev_min_r": -0.15,
+    "require_explainable": true,
+    "architecture": {
+      "tier_a_edge_adaptive": ["ev_seed_p5_min_r", "stress_delta_ev_min_r"],
+      "tier_b_survival_fixed": ["pl_p5_min_r", "cvar95_min_r"]
+    }
+  }
   "regime_risk_multiplier": {
     "hostile": 0.5,
     "neutral": 1.0,
