@@ -34,16 +34,13 @@ app.get('/health', async (c) => {
 
 app.all('/api/v1/*', async (c) => {
   const path = c.req.path.replace(/^\/api/, '')
-  const url = new URL(path + (c.req.query() ? `?${new URLSearchParams(c.req.query()).toString()}` : ''), FASTAPI_BASE)
+  const query = new URLSearchParams(c.req.query()).toString()
+  const url = `${FASTAPI_BASE}${path}${query ? `?${query}` : ''}`
   const method = c.req.method
   const headers = new Headers(c.req.header())
   headers.delete('host')
 
-  const init: RequestInit = {
-    method,
-    headers,
-  }
-
+  const init: RequestInit = { method, headers }
   if (!['GET', 'HEAD'].includes(method)) {
     init.body = await c.req.text()
   }
@@ -53,4 +50,7 @@ app.all('/api/v1/*', async (c) => {
   return new Response(body, { status: response.status, headers: response.headers })
 })
 
-export default app
+export default {
+  port: Number(process.env.PORT ?? 8787),
+  fetch: app.fetch,
+}
