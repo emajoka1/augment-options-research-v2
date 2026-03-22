@@ -1,13 +1,214 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+
+type ChainResponse = {
+  symbol: string
+  spot: number
+  strikes: number[]
+  ivs: number[]
+  expiry_days: number[] | null
+  source: string
+}
+
+type MCResponse = {
+  status: string
+  metrics?: { ev?: number; pop?: number; cvar95?: number }
+  gates?: Record<string, boolean | number | string | null>
+  edge_attribution?: Record<string, string | number | boolean | null>
+}
+
+const demoChain: ChainResponse = {
+  symbol: 'SPY',
+  spot: 600,
+  strikes: [585, 590, 595, 600, 605, 610, 615],
+  ivs: [0.23, 0.235, 0.242, 0.25, 0.255, 0.261, 0.268],
+  expiry_days: [7, 7, 7, 7, 7, 7, 7],
+  source: 'demo',
+}
+
+const demoMc: MCResponse = {
+  status: 'FULL_REFRESH',
+  metrics: { ev: 0.82, pop: 0.61, cvar95: -1.14 },
+  gates: {
+    ev_gate: true,
+    ev_ci_gate: true,
+    cvar_gate: true,
+    cvar_worst_gate: true,
+    pop_or_pot: true,
+    slippage_sensitivity_ok: true,
+    stress_ev_not_catastrophic: true,
+    allow_trade: true,
+  },
+  edge_attribution: {
+    iv_rich_vs_rv: 0.04,
+    mean_reversion_regime_probability: 0.42,
+    structure_expected_move_match: 0.77,
+    explainable: true,
+  },
+}
+
 export default function Home() {
+  const [chain] = useState<ChainResponse>(demoChain)
+  const [mcResult, setMcResult] = useState<MCResponse | null>(null)
+  const [running, setRunning] = useState(false)
+  const [strategyType, setStrategyType] = useState('iron_fly')
+  const [model, setModel] = useState('jump')
+  const [spreadBps, setSpreadBps] = useState(30)
+  const [slippageBps, setSlippageBps] = useState(8)
+
+  const rows = useMemo(
+    () => chain.strikes.map((strike, idx) => ({ strike, iv: chain.ivs[idx], expiry: chain.expiry_days?.[idx] ?? null })),
+    [chain],
+  )
+
+  const runDemoMc = async () => {
+    setRunning(true)
+    setMcResult(null)
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    setMcResult({
+      ...demoMc,
+      metrics: { ...demoMc.metrics, ev: Number((0.7 + spreadBps / 200).toFixed(2)) },
+    })
+    setRunning(false)
+  }
+
   return (
-    <main className="min-h-screen bg-zinc-50 p-10 text-zinc-900">
-      <div className="mx-auto max-w-4xl rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <p className="text-sm uppercase tracking-[0.2em] text-zinc-500">Augment Options Research</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight">Research platform scaffold is live.</h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-zinc-600">
-          Next up: chain viewer, inline Monte Carlo execution, and the strategy builder UI wired into the research engine.
-        </p>
+    <main className="min-h-screen bg-zinc-50 p-8 text-zinc-900">
+      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.5fr_1fr]">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm uppercase tracking-[0.2em] text-zinc-500">Chain Viewer</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">{chain.symbol} options chain</h1>
+              <p className="mt-2 text-sm text-zinc-600">
+                Spot {chain.spot} · Source {chain.source}
+              </p>
+            </div>
+            <button
+              onClick={runDemoMc}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+            >
+              Run MC
+            </button>
+          </div>
+
+          <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200">
+            <table className="min-w-full divide-y divide-zinc-200 text-sm">
+              <thead className="bg-zinc-50 text-left text-zinc-500">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Strike</th>
+                  <th className="px-4 py-3 font-medium">IV</th>
+                  <th className="px-4 py-3 font-medium">Expiry (days)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 bg-white">
+                {rows.map((row) => (
+                  <tr key={row.strike}>
+                    <td className="px-4 py-3 font-medium">{row.strike}</td>
+                    <td className="px-4 py-3">{(row.iv * 100).toFixed(1)}%</td>
+                    <td className="px-4 py-3">{row.expiry ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <p className="text-sm uppercase tracking-[0.2em] text-zinc-500">Inline Monte Carlo</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Trade config</h2>
+
+          <div className="mt-6 space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-zinc-700">Strategy type</span>
+              <select value={strategyType} onChange={(e) => setStrategyType(e.target.value)} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm">
+                <option value="iron_fly">Iron fly</option>
+                <option value="iron_condor">Iron condor</option>
+                <option value="long_straddle">Long straddle</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-zinc-700">Model</span>
+              <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm">
+                <option value="jump">Jump diffusion</option>
+                <option value="gbm">GBM</option>
+                <option value="heston">Heston</option>
+              </select>
+            </label>
+
+            <label className="block text-sm font-medium text-zinc-700">
+              Spread bps: {spreadBps}
+              <input type="range" min={5} max={60} value={spreadBps} onChange={(e) => setSpreadBps(Number(e.target.value))} className="mt-2 w-full" />
+            </label>
+
+            <label className="block text-sm font-medium text-zinc-700">
+              Slippage bps: {slippageBps}
+              <input type="range" min={1} max={20} value={slippageBps} onChange={(e) => setSlippageBps(Number(e.target.value))} className="mt-2 w-full" />
+            </label>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-600">
+            Running config: {strategyType} · {model} · spot {chain.spot}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-zinc-200 p-4">
+            {running ? (
+              <div className="space-y-2">
+                <p className="font-medium text-zinc-900">Running 20 × 2,000 paths…</p>
+                <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
+                  <div className="h-full w-2/3 animate-pulse rounded-full bg-zinc-900" />
+                </div>
+              </div>
+            ) : mcResult ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Result</p>
+                  <p className="mt-1 text-lg font-semibold text-zinc-900">{mcResult.status}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <MetricCard label="EV" value={mcResult.metrics?.ev} />
+                  <MetricCard label="POP" value={mcResult.metrics?.pop} />
+                  <MetricCard label="CVaR" value={mcResult.metrics?.cvar95} />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Gates</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(mcResult.gates ?? {}).map(([key, value]) => (
+                      <span key={key} className={`rounded-full px-3 py-1 text-xs font-medium ${value === true ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-700'}`}>
+                        {key}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Edge attribution</p>
+                  <dl className="mt-2 space-y-2 text-sm text-zinc-700">
+                    {Object.entries(mcResult.edge_attribution ?? {}).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between gap-3">
+                        <dt className="text-zinc-500">{key}</dt>
+                        <dd className="font-medium text-zinc-900">{String(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-500">Run MC to see EV, POP, CVaR, gate status, and edge attribution inline.</p>
+            )}
+          </div>
+        </aside>
       </div>
     </main>
+  )
+}
+
+function MetricCard({ label, value }: { label: string; value: number | undefined }) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-3">
+      <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-zinc-900">{typeof value === 'number' ? value.toFixed(2) : '—'}</p>
+    </div>
   )
 }
