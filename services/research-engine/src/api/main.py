@@ -16,6 +16,8 @@ from dataclasses import asdict
 from ak_system.mc_options.strategy import Leg, StrategyDef, compute_breakevens, max_profit_max_loss, strategy_mid_value
 from ak_system.brief.generator import BriefGenerator
 from ak_system.risk.estimator import estimate_structure_risk
+from src.api.job_models import JobAcceptedResponse, JobStatusResponse
+from src.api.jobs import get_job, submit_mc_job
 from src.api.models import (
     BriefResponse,
     ChainResponse,
@@ -72,6 +74,21 @@ def run_mc(config: MCEngineConfig):
     result = MCEngine().run(config)
     return result.payload
 
+
+
+
+@app.post('/v1/mc/run-async', response_model=JobAcceptedResponse, status_code=202)
+def run_mc_async(config: MCEngineConfig):
+    job_id = submit_mc_job(config)
+    return {'job_id': job_id, 'status': 'pending'}
+
+
+@app.get('/v1/mc/jobs/{job_id}', response_model=JobStatusResponse)
+def get_mc_job(job_id: str):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail='job not found')
+    return {'status': job.status, 'result': job.result, 'error': job.error}
 
 @app.post('/v1/strategy/analyze', response_model=StrategyAnalyzeResponse)
 def analyze_strategy(req: StrategyAnalyzeRequest):
