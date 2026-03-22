@@ -10,7 +10,9 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "dev:research": "make -C services/research-engine dev",
+    "test:research": "make -C services/research-engine test"
   },
   "devDependencies": {
     "turbo": "^2.5.0"

@@ -8,3 +8,6 @@ dev:
 
 test:
 	PYTHONPATH=$(PYTHONPATH) ./.venv/bin/python -m pytest tests/ -v
+
+smoke:
+	PYTHONPATH=$(PYTHONPATH) ./.venv/bin/python -m pytest tests/test_api.py tests/test_brief_api.py tests/test_mc_jobs_api.py -q
