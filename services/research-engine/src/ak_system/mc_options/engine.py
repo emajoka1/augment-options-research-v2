@@ -26,6 +26,8 @@ from ak_system.mc_options.strategy import (
     make_put_diagonal,
 )
 from ak_system.regime import classify_regime_rule_based
+from ak_system.storage import persist_mc_result
+import asyncio
 
 
 @dataclass
@@ -548,7 +550,19 @@ class MCEngine:
             "allow_trade": gates["allow_trade"],
             "status": payload["status"],
         }
-        if config.write_artifacts:
+        db_result_id = None
+        try:
+            db_result_id = asyncio.run(persist_mc_result(payload, asdict(config)))
+        except RuntimeError:
+            db_result_id = None
+        except Exception:
+            db_result_id = None
+
+        if db_result_id is not None:
+            payload['db_result_id'] = db_result_id
+            summary = {'db_result_id': db_result_id, **summary}
+
+        if config.write_artifacts and db_result_id is None:
             j, m = write_report_json_md_fn(paths.kb_experiments, payload)
             artifact_json, artifact_md = str(j), str(m)
             summary = {"json": artifact_json, "md": artifact_md, **summary}

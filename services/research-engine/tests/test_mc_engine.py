@@ -1,4 +1,5 @@
 from ak_system.mc_options.engine import MCEngine, MCEngineConfig
+import ak_system.mc_options.engine as engine_module
 
 
 def test_mc_engine_returns_complete_result(tmp_path):
@@ -20,3 +21,22 @@ def test_mc_engine_skip_shape(tmp_path):
     first = engine.run(cfg)
     second = engine.run(cfg)
     assert second.payload['status'] in {'NO_NEW_INPUTS', 'FULL_REFRESH', 'NO_ACTION_DQ_FAIL_DUPLICATE'}
+
+
+def test_mc_engine_uses_db_persistence_when_available(tmp_path, monkeypatch):
+    async def fake_persist(payload, config):
+        return 'db-row-1'
+
+    monkeypatch.setattr(engine_module, 'persist_mc_result', fake_persist)
+    result = MCEngine().run(MCEngineConfig(n_batches=1, paths_per_batch=100, expiry_days=1, dt_days=1, output_root=str(tmp_path), write_artifacts=True))
+    assert result.payload.get('db_result_id') == 'db-row-1'
+    assert result.artifact_json is None
+
+
+def test_mc_engine_falls_back_to_files_when_db_missing(tmp_path, monkeypatch):
+    async def fake_persist(payload, config):
+        return None
+
+    monkeypatch.setattr(engine_module, 'persist_mc_result', fake_persist)
+    result = MCEngine().run(MCEngineConfig(n_batches=1, paths_per_batch=100, expiry_days=1, dt_days=1, output_root=str(tmp_path), write_artifacts=True))
+    assert result.artifact_json is not None
