@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Query, HTTPException
-from pydantic import BaseModel
-
 from ak_system import __version__
 from ak_system.adapters.data_provider import PolygonProvider, SnapshotFileProvider
 from ak_system.mc_options.calibration import ChainSnapshot, parse_chain_snapshot
@@ -17,31 +15,27 @@ from ak_system.mc_options.pricer import bs_greeks, bs_price
 from dataclasses import asdict
 from ak_system.mc_options.strategy import Leg, StrategyDef, compute_breakevens, max_profit_max_loss, strategy_mid_value
 from ak_system.risk.estimator import estimate_structure_risk
+from src.api.models import (
+    ChainResponse,
+    GreeksResponse,
+    HealthResponse,
+    MCRunResponse,
+    RiskEstimateResponse,
+    StrategyAnalyzeRequest,
+    StrategyAnalyzeResponse,
+    VolSurfaceResponse,
+)
 
 app = FastAPI(title='Research Engine API', version=__version__)
 
 
-class StrategyLeg(BaseModel):
-    side: Literal['long', 'short']
-    option_type: Literal['call', 'put']
-    strike: float
-    qty: int = 1
-    expiry_years: float | None = None
 
-
-class StrategyAnalyzeRequest(BaseModel):
-    legs: list[StrategyLeg]
-    spot: float
-    r: float = 0.03
-    q: float = 0.0
-
-
-@app.get('/v1/health')
+@app.get('/v1/health', response_model=HealthResponse)
 def health():
     return {'status': 'ok', 'version': __version__, 'timestamp': datetime.now(timezone.utc).isoformat()}
 
 
-@app.get('/v1/chain/{symbol}')
+@app.get('/v1/chain/{symbol}', response_model=ChainResponse)
 async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
     provider = None
     if os.environ.get('POLYGON_API_KEY'):
@@ -64,20 +58,20 @@ async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None,
     }
 
 
-@app.get('/v1/greeks')
+@app.get('/v1/greeks', response_model=GreeksResponse)
 def greeks(S: float, K: float, r: float, q: float, sigma: float, T: float, option_type: Literal['call', 'put']):
     price = bs_price(S, K, r, q, sigma, T, option_type)
     greeks_payload = asdict(bs_greeks(S, K, r, q, sigma, T, option_type))
     return {'price': price, **greeks_payload}
 
 
-@app.post('/v1/mc/run')
+@app.post('/v1/mc/run', response_model=MCRunResponse)
 def run_mc(config: MCEngineConfig):
     result = MCEngine().run(config)
     return result.payload
 
 
-@app.post('/v1/strategy/analyze')
+@app.post('/v1/strategy/analyze', response_model=StrategyAnalyzeResponse)
 def analyze_strategy(req: StrategyAnalyzeRequest):
     expiry_years = max((leg.expiry_years or 0.0137) for leg in req.legs)
     strategy = StrategyDef(name='custom', legs=[Leg(**leg.model_dump()) for leg in req.legs], expiry_years=expiry_years)
@@ -96,7 +90,7 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
     }
 
 
-@app.get('/v1/vol-surface/{symbol}')
+@app.get('/v1/vol-surface/{symbol}', response_model=VolSurfaceResponse)
 def vol_surface(symbol: str, snapshot_path: str = Query(..., description='Local snapshot path')):
     snap = parse_chain_snapshot(snapshot_path)
     fit = fit_surface_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs)
@@ -113,6 +107,6 @@ def vol_surface(symbol: str, snapshot_path: str = Query(..., description='Local 
     }
 
 
-@app.get('/v1/risk/estimate')
+@app.get('/v1/risk/estimate', response_model=RiskEstimateResponse)
 def risk_estimate(structure_type: str, risk_cap: float, debit: float = 0.0, credit: float = 0.0, width: float = 0.0, wing: float = 0.0):
     return estimate_structure_risk(structure_type=structure_type, risk_cap=risk_cap, debit=debit, credit=credit, width=width, wing=wing)
