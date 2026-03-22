@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from pydantic import BaseModel
 
 from ak_system import __version__
+from ak_system.adapters.data_provider import PolygonProvider, SnapshotFileProvider
 from ak_system.mc_options.calibration import ChainSnapshot, parse_chain_snapshot
 from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 from ak_system.mc_options.iv_dynamics import fit_surface_from_snapshot
@@ -40,8 +42,16 @@ def health():
 
 
 @app.get('/v1/chain/{symbol}')
-def get_chain(symbol: str, snapshot_path: str = Query(..., description='Local snapshot path')):
-    snap = parse_chain_snapshot(snapshot_path)
+async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
+    provider = None
+    if os.environ.get('POLYGON_API_KEY'):
+        provider = PolygonProvider(os.environ['POLYGON_API_KEY'])
+    elif snapshot_path:
+        provider = SnapshotFileProvider(snapshot_path)
+    else:
+        raise HTTPException(status_code=400, detail='snapshot_path is required when POLYGON_API_KEY is not set')
+
+    snap = await provider.get_chain(symbol)
     return {
         'symbol': symbol,
         'spot': snap.spot,
@@ -49,7 +59,8 @@ def get_chain(symbol: str, snapshot_path: str = Query(..., description='Local sn
         'ivs': snap.ivs.tolist(),
         'expiry_days': snap.expiries_days.tolist() if snap.expiries_days is not None else None,
         'returns': snap.returns.tolist() if snap.returns is not None else None,
-        'todo': 'Replace with Polygon.io live fetch in Task 0.5.',
+        'source': 'polygon' if os.environ.get('POLYGON_API_KEY') else 'snapshot_file',
+        'todo': 'Replace with Polygon.io live fetch in Task 0.5.' if not os.environ.get('POLYGON_API_KEY') else None,
     }
 
 

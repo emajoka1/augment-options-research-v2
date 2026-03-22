@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS users (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ clerk_id VARCHAR(100) UNIQUE NOT NULL,
+ email VARCHAR(255),
+ tier VARCHAR(20) DEFAULT 'free',
+ created_at TIMESTAMPTZ DEFAULT NOW()
+);
