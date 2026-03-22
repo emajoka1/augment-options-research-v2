@@ -14,8 +14,10 @@ from ak_system.mc_options.iv_dynamics import fit_surface_from_snapshot
 from ak_system.mc_options.pricer import bs_greeks, bs_price
 from dataclasses import asdict
 from ak_system.mc_options.strategy import Leg, StrategyDef, compute_breakevens, max_profit_max_loss, strategy_mid_value
+from ak_system.brief.generator import BriefGenerator
 from ak_system.risk.estimator import estimate_structure_risk
 from src.api.models import (
+    BriefResponse,
     ChainResponse,
     GreeksResponse,
     HealthResponse,
@@ -110,3 +112,9 @@ def vol_surface(symbol: str, snapshot_path: str = Query(..., description='Local 
 @app.get('/v1/risk/estimate', response_model=RiskEstimateResponse)
 def risk_estimate(structure_type: str, risk_cap: float, debit: float = 0.0, credit: float = 0.0, width: float = 0.0, wing: float = 0.0):
     return estimate_structure_risk(structure_type=structure_type, risk_cap=risk_cap, debit=debit, credit=credit, width=width, wing=wing)
+
+
+@app.post('/v1/brief/{symbol}', response_model=BriefResponse)
+def generate_brief(symbol: str):
+    result = BriefGenerator().generate(symbol)
+    return result.payload

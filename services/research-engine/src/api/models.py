@@ -85,3 +85,10 @@ class MCRunResponse(BaseModel):
     edge_attribution: dict[str, Any] | None = None
     gates: dict[str, Any] | None = None
     db_result_id: str | None = None
+
+
+class BriefResponse(BaseModel):
+    TRADE_BRIEF: dict[str, Any] | None = Field(default=None, alias='TRADE BRIEF')
+    brief_meta: dict[str, Any] | None = None
+
+    model_config = {'populate_by_name': True}
