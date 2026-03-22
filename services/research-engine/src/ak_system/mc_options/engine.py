@@ -27,6 +27,7 @@ from ak_system.mc_options.strategy import (
 )
 from ak_system.regime import classify_regime_rule_based
 from ak_system.storage import persist_mc_result
+from ak_system.local_artifacts import get_service_artifact_dir
 import asyncio
 
 
@@ -273,6 +274,7 @@ class MCEngine:
         infer_regime_distribution_fn = self._dep("infer_regime_distribution", infer_regime_distribution)
         load_local_returns_fallback_fn = self._dep("load_local_returns_fallback", load_local_returns_fallback)
         write_report_json_md_fn = self._dep("write_report_json_md", write_report_json_md)
+        get_artifact_base_fn = self._dep("get_artifact_base", lambda root, paths: get_service_artifact_dir(root))
 
         paths = build_paths_fn(cwd)
         ensure_dirs_fn(paths)
@@ -338,7 +340,8 @@ class MCEngine:
         canonical_inputs = _build_canonical_inputs(config, spot, strategy, friction, snapshot_fp)
         canonical_hash = _canonical_inputs_hash(canonical_inputs)
 
-        latest_payload, latest_path = _latest_options_mc_artifact(paths.kb_experiments)
+        artifact_base = get_artifact_base_fn(cwd, paths)
+        latest_payload, latest_path = _latest_options_mc_artifact(artifact_base)
         forced_refresh = bool(config.force_refresh)
         should_skip = False
         dq_fail_republished_after_cooldown = False
@@ -563,7 +566,7 @@ class MCEngine:
             summary = {'db_result_id': db_result_id, **summary}
 
         if config.write_artifacts and db_result_id is None:
-            j, m = write_report_json_md_fn(paths.kb_experiments, payload)
+            j, m = write_report_json_md_fn(artifact_base, payload)
             artifact_json, artifact_md = str(j), str(m)
             summary = {"json": artifact_json, "md": artifact_md, **summary}
         return MCEngineResult(payload=payload, metrics=metrics, multi_seed=payload["multi_seed_confidence"], gates=gates, edge_attribution=attribution, breakevens=breakevens, allow_trade=gates["allow_trade"], data_quality_status=data_quality_status, artifact_json=artifact_json, artifact_md=artifact_md, summary=summary)

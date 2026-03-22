@@ -21,6 +21,11 @@ from ak_system.mc_options.simulator import simulate_strategy_paths
 from ak_system.mc_options.strategy import compute_breakevens
 
 
+
+
+def _artifact_base(root: Path, paths):
+    return getattr(paths, 'kb_experiments')
+
 __all__ = [
     "MCEngine",
     "MCEngineConfig",
@@ -99,6 +104,7 @@ def main() -> None:
         "infer_regime_distribution": infer_regime_distribution,
         "load_local_returns_fallback": load_local_returns_fallback,
         "write_report_json_md": write_report_json_md,
+        "get_artifact_base": _artifact_base,
     }
     result = MCEngine(deps=deps).run(parse_args())
     print(json.dumps(result.summary, indent=2))
