@@ -122,8 +122,8 @@ export function useResearchPage() {
       setStrategyResult((await response.json()) as StrategyAnalyzeResponse)
       setStatusMessage('Strategy analysis loaded from research engine.')
     } catch {
-      setStrategyResult(demoStrategy)
-      setStatusMessage('Strategy analysis unavailable. Demo analysis is shown as a placeholder.')
+      setStrategyResult(null)
+      setStatusMessage('Strategy analysis unavailable. Start the local API stack to analyze configured legs.')
     } finally {
       setLoadingStrategy(false)
     }
@@ -137,8 +137,8 @@ export function useResearchPage() {
       setSurfaceResult((await response.json()) as VolSurfaceResponse)
       setStatusMessage('Vol surface loaded from research engine.')
     } catch {
-      setSurfaceResult(demoSurface)
-      setStatusMessage('Vol surface unavailable. Demo surface is shown as a placeholder.')
+      setSurfaceResult(null)
+      setStatusMessage('Vol surface unavailable. Start the local API stack to fetch fitted volatility data.')
     } finally {
       setLoadingSurface(false)
     }
