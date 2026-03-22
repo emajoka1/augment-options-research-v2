@@ -1,3 +1,4 @@
+import { verifyToken } from '@clerk/backend'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
@@ -6,6 +7,7 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split
 const FREE_LIMIT = Number(process.env.RATE_LIMIT_FREE_PER_MIN ?? 100)
 const PRO_LIMIT = Number(process.env.RATE_LIMIT_PRO_PER_MIN ?? 1000)
 const AUTH_OPTIONAL = (process.env.AUTH_OPTIONAL ?? 'true').toLowerCase() === 'true'
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY
 
 const app = new Hono()
 const buckets = new Map<string, { count: number; resetAt: number }>()
@@ -19,14 +21,41 @@ app.use(
   }),
 )
 
-function getIdentity(c: any) {
+type Identity = { ok: boolean; tier: 'free' | 'pro'; subject: string; authMode: 'clerk' | 'dev' | 'none' }
+
+async function getIdentity(c: any): Promise<Identity> {
   const auth = c.req.header('authorization')
-  if (!auth) return { ok: AUTH_OPTIONAL, tier: 'free', subject: 'anonymous' }
-  if (!auth.startsWith('Bearer ')) return { ok: false, tier: 'free', subject: 'invalid' }
+
+  if (!auth) {
+    return { ok: AUTH_OPTIONAL, tier: 'free', subject: 'anonymous', authMode: AUTH_OPTIONAL ? 'none' : 'dev' }
+  }
+
+  if (!auth.startsWith('Bearer ')) {
+    return { ok: false, tier: 'free', subject: 'invalid', authMode: 'dev' }
+  }
+
   const token = auth.slice('Bearer '.length)
-  if (token === 'pro-demo') return { ok: true, tier: 'pro', subject: 'pro-demo' }
-  if (token === 'free-demo') return { ok: true, tier: 'free', subject: 'free-demo' }
-  return { ok: AUTH_OPTIONAL, tier: 'free', subject: 'fallback' }
+
+  if (CLERK_SECRET_KEY) {
+    try {
+      const verified = await verifyToken(token, { secretKey: CLERK_SECRET_KEY })
+      const tierClaim = (verified?.metadata as any)?.tier ?? (verified as any)?.tier ?? 'free'
+      return {
+        ok: true,
+        tier: tierClaim === 'pro' ? 'pro' : 'free',
+        subject: verified.sub ?? 'clerk-user',
+        authMode: 'clerk',
+      }
+    } catch {
+      return { ok: false, tier: 'free', subject: 'invalid-clerk-token', authMode: 'clerk' }
+    }
+  }
+
+  if (AUTH_OPTIONAL) {
+    return { ok: true, tier: 'free', subject: 'dev-fallback', authMode: 'dev' }
+  }
+
+  return { ok: false, tier: 'free', subject: 'missing-clerk-config', authMode: 'dev' }
 }
 
 function enforceRateLimit(subject: string, tier: string) {
@@ -62,18 +91,25 @@ app.get('/health', async (c) => {
     service: 'api-gateway',
     fastapi: upstream,
     auth_optional: AUTH_OPTIONAL,
+    clerk_configured: Boolean(CLERK_SECRET_KEY),
   })
 })
 
 app.post('/api/webhooks/clerk', async (c) => {
   const payload = await c.req.json().catch(() => ({}))
-  return c.json({ status: 'accepted', received: payload?.type ?? null })
-}, 202)
+  const type = payload?.type ?? null
+  const data = payload?.data ?? null
+  return c.json({
+    status: 'accepted',
+    received: type,
+    user_hint: data?.id ?? null,
+  }, 202)
+})
 
 app.use('/api/v1/*', async (c, next) => {
-  const identity = getIdentity(c)
+  const identity = await getIdentity(c)
   if (!identity.ok) {
-    return c.json({ error: 'unauthorized' }, 401)
+    return c.json({ error: 'unauthorized', auth_mode: identity.authMode }, 401)
   }
   const rl = enforceRateLimit(identity.subject, identity.tier)
   if (!rl.ok) {
@@ -82,6 +118,7 @@ app.use('/api/v1/*', async (c, next) => {
   }
   c.set('identity', identity)
   c.header('X-RateLimit-Remaining', String(rl.remaining))
+  c.header('X-Auth-Mode', identity.authMode)
   await next()
 })
 
@@ -92,6 +129,12 @@ app.all('/api/v1/*', async (c) => {
   const method = c.req.method
   const headers = new Headers(c.req.header())
   headers.delete('host')
+
+  const identity = c.get('identity') as Identity | undefined
+  if (identity) {
+    headers.set('x-openclaw-user-sub', identity.subject)
+    headers.set('x-openclaw-user-tier', identity.tier)
+  }
 
   const init: RequestInit = { method, headers }
   if (!['GET', 'HEAD'].includes(method)) {
