@@ -39,11 +39,25 @@ class Schedules:
     promote_minutes: int = 240
 
 
+def _resolve_agent_root(root: Path) -> Path:
+    root = root.resolve()
+    if (root / "kb").exists():
+        return root
+    for candidate in [root / "agent", *root.parents]:
+        if (candidate / "agent" / "kb").exists():
+            return candidate / "agent"
+        if (candidate / "kb").exists() and (candidate / "snapshots").exists():
+            return candidate
+    return root
+
+
 def build_paths(root: Path) -> Paths:
-    kb = root / "kb"
+    resolved_root = root.resolve()
+    agent_root = _resolve_agent_root(resolved_root)
+    kb = agent_root / "kb"
     decisions = kb / "decisions"
     return Paths(
-        root=root,
+        root=agent_root,
         kb=kb,
         sources=kb / "sources",
         summaries=kb / "summaries",
@@ -56,9 +70,9 @@ def build_paths(root: Path) -> Paths:
         decisions_pending=decisions / "pending",
         decisions_rejected=decisions / "rejected",
         trade_logs=kb / "trade_logs",
-        experiments=root / "experiments",
-        proposals=root / "proposals",
-        snapshots=root / "snapshots",
+        experiments=resolved_root / "experiments",
+        proposals=resolved_root / "proposals",
+        snapshots=agent_root / "snapshots",
     )
 
 

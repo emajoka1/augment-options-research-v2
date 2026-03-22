@@ -1,12 +1,19 @@
-# Install the local project from this repository checkout
 -e .
 exceptiongroup==1.3.1
+fastapi>=0.116.0
+httpx>=0.28.1
 iniconfig==2.1.0
 numpy==2.0.2
 packaging==26.0
 pluggy==1.6.0
 Pygments==2.19.2
+pydantic>=2.11.0
 pytest==8.4.2
+pytest-asyncio>=1.1.0
 scipy==1.15.3
 tomli==2.4.0
 typing_extensions==4.15.0
+uvicorn>=0.35.0
+redis>=6.4.0
+asyncpg>=0.30.0
+celery>=5.5.3

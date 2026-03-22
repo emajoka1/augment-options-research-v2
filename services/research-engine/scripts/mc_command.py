@@ -27,9 +27,11 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from ak_system.config import build_paths
 from ak_system.risk.estimator import estimate_structure_risk
 
-LOG_PATH = ROOT / "snapshots" / "mc_runs.jsonl"
+PATHS = build_paths(ROOT)
+LOG_PATH = PATHS.snapshots / "mc_runs.jsonl"
 
 
 def _freshness_sla_seconds() -> int:
@@ -151,7 +153,7 @@ def generate_options_mc_for_run(spot: Optional[float]) -> tuple[Optional[Dict[st
         return None, None
     try:
         out = json.loads(p.stdout)
-        src = out.get("json")
+        src = out.get("json") or ((out.get("prior_artifact") or {}).get("path"))
         if not src:
             return None, None
         return json.loads(Path(src).read_text()), str(src)
@@ -160,7 +162,7 @@ def generate_options_mc_for_run(spot: Optional[float]) -> tuple[Optional[Dict[st
 
 
 def latest_options_mc(max_age_minutes: int = 120) -> tuple[Optional[Dict[str, Any]], Optional[str], bool]:
-    files = sorted((ROOT / "kb" / "experiments").glob("options-mc-*.json"))
+    files = sorted(PATHS.kb_experiments.glob("options-mc-*.json"))
     if not files:
         return None, None, True
     f = files[-1]
@@ -262,7 +264,7 @@ def _derive_structural_r(mc: Dict[str, Any]) -> tuple[Optional[float], str]:
 
 
 def load_allocation_state() -> Dict[str, Any]:
-    p = ROOT / "snapshots" / "steady_state.json"
+    p = PATHS.snapshots / "steady_state.json"
     if not p.exists():
         return {"trades_today": 0, "trades_week": 0, "day_pnl_r": 0.0, "correlated_exposure_pct": 0.0}
     try:

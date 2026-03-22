@@ -1,0 +1,12 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist",
+    "lint": "echo 'lint not configured yet'"
+  },
+  "dependencies": {
+    "hono": "^4.7.2"
+  }
+}
