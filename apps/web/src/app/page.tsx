@@ -18,6 +18,25 @@ type MCResponse = {
   edge_attribution?: Record<string, string | number | boolean | null>
 }
 
+type BriefCandidate = {
+  type?: string
+  decision?: string
+  gateFailures?: string[]
+  score?: { Total?: number }
+}
+
+type BriefResponse = {
+  'TRADE BRIEF'?: {
+    Ticker?: string
+    Spot?: number | null
+    FinalDecision?: string
+    ['Final Decision']?: string
+    NoCandidatesReason?: string | null
+    missingRequiredData?: string[]
+    Candidates?: BriefCandidate[]
+  }
+}
+
 const demoChain: ChainResponse = {
   symbol: 'SPY',
   spot: 600,
@@ -48,13 +67,29 @@ const demoMc: MCResponse = {
   },
 }
 
+const demoBrief: BriefResponse = {
+  'TRADE BRIEF': {
+    Ticker: 'SPY',
+    Spot: 600,
+    'Final Decision': 'TRADE',
+    NoCandidatesReason: null,
+    missingRequiredData: [],
+    Candidates: [
+      { type: 'debit', decision: 'TRADE', gateFailures: [], score: { Total: 78 } },
+      { type: 'condor', decision: 'PASS', gateFailures: ['execution_poor'], score: { Total: 63 } },
+    ],
+  },
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8787'
 
 export default function Home() {
   const [chain, setChain] = useState<ChainResponse>(demoChain)
   const [mcResult, setMcResult] = useState<MCResponse | null>(null)
+  const [briefResult, setBriefResult] = useState<BriefResponse | null>(demoBrief)
   const [running, setRunning] = useState(false)
   const [loadingChain, setLoadingChain] = useState(false)
+  const [loadingBrief, setLoadingBrief] = useState(false)
   const [statusMessage, setStatusMessage] = useState('Using demo market data until the local API stack is available.')
   const [strategyType, setStrategyType] = useState('iron_fly')
   const [model, setModel] = useState('jump')
@@ -130,6 +165,24 @@ export default function Home() {
     }
   }
 
+  const loadBrief = async () => {
+    setLoadingBrief(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/brief/${chain.symbol}`, { method: 'POST' })
+      if (!response.ok) throw new Error('brief request failed')
+      const payload = (await response.json()) as BriefResponse
+      setBriefResult(payload)
+      setStatusMessage('Trade brief loaded from research engine.')
+    } catch {
+      setBriefResult(demoBrief)
+      setStatusMessage('Using demo trade brief until the local API stack is available.')
+    } finally {
+      setLoadingBrief(false)
+    }
+  }
+
+  const brief = briefResult?.['TRADE BRIEF']
+
   return (
     <main className="min-h-screen bg-zinc-50 p-8 text-zinc-900">
       <div className="mx-auto max-w-7xl">
@@ -147,9 +200,14 @@ export default function Home() {
                   Spot {chain.spot} · Source {chain.source}
                 </p>
               </div>
-              <button onClick={runMc} className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
-                Run MC
-              </button>
+              <div className="flex gap-2">
+                <button onClick={loadBrief} className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-50">
+                  {loadingBrief ? 'Loading brief…' : 'Load brief'}
+                </button>
+                <button onClick={runMc} className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">
+                  Run MC
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200">
@@ -171,6 +229,58 @@ export default function Home() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.2em] text-zinc-500">Trade brief</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight">{brief?.Ticker ?? chain.symbol} brief</h2>
+                </div>
+                <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-700">
+                  {brief?.['Final Decision'] ?? 'NO TRADE'}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr]">
+                <div className="rounded-2xl bg-zinc-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Missing required data</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(brief?.missingRequiredData?.length ? brief.missingRequiredData : ['none']).map((item) => (
+                      <span key={item} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-zinc-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">No-candidate reason</p>
+                  <p className="mt-3 text-sm text-zinc-700">{brief?.NoCandidatesReason ?? 'Candidates available.'}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {(brief?.Candidates ?? []).map((candidate, idx) => (
+                  <div key={`${candidate.type}-${idx}`} className="rounded-2xl border border-zinc-200 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900">{candidate.type ?? 'candidate'}</p>
+                        <p className="text-xs text-zinc-500">Decision {candidate.decision ?? 'PASS'}</p>
+                      </div>
+                      <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">
+                        Score {candidate.score?.Total ?? '—'}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(candidate.gateFailures?.length ? candidate.gateFailures : ['clean']).map((gate) => (
+                        <span key={gate} className="rounded-full bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 ring-1 ring-zinc-200">
+                          {gate}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 

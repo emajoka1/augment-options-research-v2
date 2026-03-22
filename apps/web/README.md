@@ -3,6 +3,7 @@
 Current status:
 - chain viewer calls the local gateway when available
 - inline Monte Carlo panel posts to the research engine through apps/api
+- trade brief panel calls `/api/v1/brief/:symbol`
 - falls back to demo data/output when the local stack is not running
 
 Set:
