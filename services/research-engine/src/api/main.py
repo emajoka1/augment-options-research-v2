@@ -78,8 +78,8 @@ def run_mc(config: MCEngineConfig):
 
 @app.post('/v1/mc/run-async', response_model=JobAcceptedResponse, status_code=202)
 def run_mc_async(config: MCEngineConfig):
-    job_id = submit_mc_job(config)
-    return {'job_id': job_id, 'status': 'pending'}
+    job_id, backend = submit_mc_job(config)
+    return {'job_id': job_id, 'status': 'pending', 'backend': backend}
 
 
 @app.get('/v1/mc/jobs/{job_id}', response_model=JobStatusResponse)
@@ -87,7 +87,7 @@ def get_mc_job(job_id: str):
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail='job not found')
-    return {'status': job.status, 'result': job.result, 'error': job.error}
+    return {'status': job.status, 'result': job.result, 'error': job.error, 'backend': job.backend}
 
 @app.post('/v1/strategy/analyze', response_model=StrategyAnalyzeResponse)
 def analyze_strategy(req: StrategyAnalyzeRequest):

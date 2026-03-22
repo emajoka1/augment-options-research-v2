@@ -8,9 +8,11 @@ from pydantic import BaseModel
 class JobAcceptedResponse(BaseModel):
     job_id: str
     status: str = 'pending'
+    backend: str
 
 
 class JobStatusResponse(BaseModel):
     status: str
     result: dict[str, Any] | None = None
     error: str | None = None
+    backend: str
