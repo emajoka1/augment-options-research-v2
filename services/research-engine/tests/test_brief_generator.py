@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-import pytest
-
 from ak_system.brief.generator import BriefGenerator
-
-
-def test_brief_generator_extracts_json_blob():
-    payload = BriefGenerator._extract_json_blob('prefix {"a": 1} suffix')
-    assert payload == {'a': 1}
 
 
 def test_brief_generator_returns_placeholder_for_non_spy():
@@ -16,13 +9,30 @@ def test_brief_generator_returns_placeholder_for_non_spy():
     assert result.payload['TRADE BRIEF']['Final Decision'] == 'NO TRADE'
 
 
-def test_brief_generator_runs_legacy_cli_for_spy(monkeypatch):
-    class Result:
-        returncode = 0
-        stdout = '{"TRADE BRIEF": {"Ticker": "SPY", "Final Decision": "TRADE", "Candidates": []}}'
-        stderr = ''
+def test_brief_generator_uses_native_module_for_spy(monkeypatch):
+    class FakeModule:
+        @staticmethod
+        def generate_brief_payload():
+            return {'TRADE BRIEF': {'Ticker': 'SPY', 'Final Decision': 'TRADE', 'Candidates': []}}
 
-    monkeypatch.setattr('ak_system.brief.generator.subprocess.run', lambda *args, **kwargs: Result())
+    monkeypatch.setattr(BriefGenerator, '_load_spy_module', lambda self: FakeModule())
     result = BriefGenerator().generate('SPY')
     assert result.symbol == 'SPY'
+    assert result.source == 'native_module'
     assert result.payload['TRADE BRIEF']['Final Decision'] == 'TRADE'
+
+
+def test_brief_generator_loads_module_path(monkeypatch, tmp_path):
+    generator = BriefGenerator(root=tmp_path)
+
+    class FakeLoader:
+        def exec_module(self, module):
+            module.generate_brief_payload = lambda: {'TRADE BRIEF': {'Ticker': 'SPY'}}
+
+    class FakeSpec:
+        loader = FakeLoader()
+
+    monkeypatch.setattr('ak_system.brief.generator.importlib.util.spec_from_file_location', lambda name, path: FakeSpec())
+    monkeypatch.setattr('ak_system.brief.generator.importlib.util.module_from_spec', lambda spec: type('M', (), {})())
+    module = generator._load_spy_module()
+    assert module.generate_brief_payload()['TRADE BRIEF']['Ticker'] == 'SPY'

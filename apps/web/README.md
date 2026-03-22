@@ -8,6 +8,7 @@ Current status:
 - vol surface panel calls `/api/v1/vol-surface/:symbol`
 - when the local stack is unavailable, the UI now shows explicit placeholder/unavailable states instead of silently pretending requests succeeded
 - frontend no longer depends on a fake `/tmp/demo-chain.json` snapshot path
+- brief panel no longer falls back to a preloaded fake brief result
 
 Set:
 - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8787`

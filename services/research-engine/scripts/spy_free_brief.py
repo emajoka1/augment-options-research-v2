@@ -696,7 +696,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
     }
 
 
-def main():
+def generate_brief_payload():
     live = load_live(LIVE_PATH)
     _ = load_chain(CHAIN_PATH)  # keep compatibility for environment
 
@@ -840,7 +840,11 @@ def main():
         }
     }
 
-    print(json.dumps(output, indent=2))
+    return output
+
+
+def main():
+    print(json.dumps(generate_brief_payload(), indent=2))
 
 
 if __name__ == "__main__":

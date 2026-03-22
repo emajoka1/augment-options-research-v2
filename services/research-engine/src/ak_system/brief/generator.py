@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-import subprocess
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,21 +37,14 @@ class BriefGenerator:
                 },
             )
 
-        out = subprocess.run(
-            ['python3', 'scripts/spy_free_brief.py'],
-            cwd=self.root,
-            capture_output=True,
-            text=True,
-        )
-        if out.returncode != 0:
-            raise RuntimeError(out.stderr.strip() or 'spy_free_brief.py failed')
-        payload = self._extract_json_blob(out.stdout)
-        return BriefResult(symbol='SPY', payload=payload, source='legacy_cli')
+        payload = self._load_spy_module().generate_brief_payload()
+        return BriefResult(symbol='SPY', payload=payload, source='native_module')
 
-    @staticmethod
-    def _extract_json_blob(text: str) -> dict[str, Any]:
-        start = text.find('{')
-        end = text.rfind('}')
-        if start < 0 or end < start:
-            raise ValueError('No JSON object found in command output')
-        return json.loads(text[start : end + 1])
+    def _load_spy_module(self):
+        path = self.root / 'scripts' / 'spy_free_brief.py'
+        spec = importlib.util.spec_from_file_location('spy_free_brief', path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError('Unable to load spy_free_brief.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module

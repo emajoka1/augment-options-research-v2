@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_BASE, demoBrief, demoChain, demoStrategy, demoSurface } from './demo-data'
+import { API_BASE, demoChain } from './demo-data'
 import type { BriefResponse, ChainResponse, MCResponse, StrategyAnalyzeResponse, StrategyLeg, VolSurfaceResponse } from './types'
 
 export function useResearchPage() {
@@ -150,5 +150,8 @@ export function useResearchPage() {
     statusMessage, backendAvailable, strategyType, model, spreadBps, slippageBps,
     setStrategyType, setModel, setSpreadBps, setSlippageBps,
     rows, strategyLegs, runMc, loadBrief, analyzeStrategy, loadSurface,
+  }
+}
+dBrief, analyzeStrategy, loadSurface,
   }
 }
