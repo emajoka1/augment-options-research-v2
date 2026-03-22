@@ -2,17 +2,49 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
 const FASTAPI_BASE = process.env.FASTAPI_BASE_URL ?? 'http://localhost:8080'
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((v) => v.trim())
+const FREE_LIMIT = Number(process.env.RATE_LIMIT_FREE_PER_MIN ?? 100)
+const PRO_LIMIT = Number(process.env.RATE_LIMIT_PRO_PER_MIN ?? 1000)
+const AUTH_OPTIONAL = (process.env.AUTH_OPTIONAL ?? 'true').toLowerCase() === 'true'
 
 const app = new Hono()
+const buckets = new Map<string, { count: number; resetAt: number }>()
 
 app.use(
   '*',
   cors({
-    origin: ['http://localhost:3000'],
+    origin: CORS_ORIGINS,
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
   }),
 )
+
+function getIdentity(c: any) {
+  const auth = c.req.header('authorization')
+  if (!auth) return { ok: AUTH_OPTIONAL, tier: 'free', subject: 'anonymous' }
+  if (!auth.startsWith('Bearer ')) return { ok: false, tier: 'free', subject: 'invalid' }
+  const token = auth.slice('Bearer '.length)
+  if (token === 'pro-demo') return { ok: true, tier: 'pro', subject: 'pro-demo' }
+  if (token === 'free-demo') return { ok: true, tier: 'free', subject: 'free-demo' }
+  return { ok: AUTH_OPTIONAL, tier: 'free', subject: 'fallback' }
+}
+
+function enforceRateLimit(subject: string, tier: string) {
+  const now = Date.now()
+  const windowMs = 60_000
+  const limit = tier === 'pro' ? PRO_LIMIT : FREE_LIMIT
+  const current = buckets.get(subject)
+  if (!current || current.resetAt <= now) {
+    buckets.set(subject, { count: 1, resetAt: now + windowMs })
+    return { ok: true, remaining: limit - 1 }
+  }
+  if (current.count >= limit) {
+    return { ok: false, remaining: 0, retryAfterMs: current.resetAt - now }
+  }
+  current.count += 1
+  buckets.set(subject, current)
+  return { ok: true, remaining: limit - current.count }
+}
 
 app.get('/health', async (c) => {
   let upstream: unknown = null
@@ -29,7 +61,28 @@ app.get('/health', async (c) => {
     status: upstreamOk ? 'ok' : 'degraded',
     service: 'api-gateway',
     fastapi: upstream,
+    auth_optional: AUTH_OPTIONAL,
   })
+})
+
+app.post('/api/webhooks/clerk', async (c) => {
+  const payload = await c.req.json().catch(() => ({}))
+  return c.json({ status: 'accepted', received: payload?.type ?? null })
+}, 202)
+
+app.use('/api/v1/*', async (c, next) => {
+  const identity = getIdentity(c)
+  if (!identity.ok) {
+    return c.json({ error: 'unauthorized' }, 401)
+  }
+  const rl = enforceRateLimit(identity.subject, identity.tier)
+  if (!rl.ok) {
+    c.header('Retry-After', String(Math.ceil((rl.retryAfterMs ?? 0) / 1000)))
+    return c.json({ error: 'rate_limited' }, 429)
+  }
+  c.set('identity', identity)
+  c.header('X-RateLimit-Remaining', String(rl.remaining))
+  await next()
 })
 
 app.all('/api/v1/*', async (c) => {
