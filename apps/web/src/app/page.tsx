@@ -19,6 +19,7 @@ export default function Home() {
     loadingStrategy,
     loadingSurface,
     statusMessage,
+    backendAvailable,
     strategyType,
     model,
     spreadBps,
@@ -38,7 +39,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-zinc-50 p-8 text-zinc-900">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-6 rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-sm text-zinc-600 shadow-sm">
+        <div className={`mb-6 rounded-2xl border px-5 py-4 text-sm shadow-sm ${backendAvailable ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
           {loadingChain ? 'Loading chain…' : statusMessage}
         </div>
 
@@ -56,6 +57,12 @@ export default function Home() {
                 <button onClick={runMc} className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700">Run MC</button>
               </div>
             </div>
+
+            {!backendAvailable && (
+              <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                The backend is currently unavailable. Values shown below are placeholders, not live research results.
+              </div>
+            )}
 
             <ChainTable rows={rows} />
             <BriefPanel symbol={chain.symbol} brief={briefResult?.['TRADE BRIEF']} />

@@ -6,7 +6,7 @@ Current status:
 - trade brief panel calls `/api/v1/brief/:symbol`
 - strategy builder panel calls `/api/v1/strategy/analyze`
 - vol surface panel calls `/api/v1/vol-surface/:symbol`
-- falls back to demo data/output when the local stack is not running
+- when the local stack is unavailable, the UI now shows explicit placeholder/unavailable states instead of silently pretending requests succeeded
 
 Set:
 - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8787`

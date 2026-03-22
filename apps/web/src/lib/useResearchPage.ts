@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_BASE, demoBrief, demoChain, demoMc, demoStrategy, demoSurface } from './demo-data'
+import { API_BASE, demoBrief, demoChain, demoStrategy, demoSurface } from './demo-data'
 import type { BriefResponse, ChainResponse, MCResponse, StrategyAnalyzeResponse, StrategyLeg, VolSurfaceResponse } from './types'
 
 export function useResearchPage() {
   const [chain, setChain] = useState<ChainResponse>(demoChain)
   const [mcResult, setMcResult] = useState<MCResponse | null>(null)
-  const [briefResult, setBriefResult] = useState<BriefResponse | null>(demoBrief)
-  const [strategyResult, setStrategyResult] = useState<StrategyAnalyzeResponse | null>(demoStrategy)
-  const [surfaceResult, setSurfaceResult] = useState<VolSurfaceResponse | null>(demoSurface)
+  const [briefResult, setBriefResult] = useState<BriefResponse | null>(null)
+  const [strategyResult, setStrategyResult] = useState<StrategyAnalyzeResponse | null>(null)
+  const [surfaceResult, setSurfaceResult] = useState<VolSurfaceResponse | null>(null)
   const [running, setRunning] = useState(false)
   const [loadingChain, setLoadingChain] = useState(false)
   const [loadingBrief, setLoadingBrief] = useState(false)
   const [loadingStrategy, setLoadingStrategy] = useState(false)
   const [loadingSurface, setLoadingSurface] = useState(false)
-  const [statusMessage, setStatusMessage] = useState('Using demo market data until the local API stack is available.')
+  const [statusMessage, setStatusMessage] = useState('Waiting for the local API stack. Demo values are shown as placeholders only.')
+  const [backendAvailable, setBackendAvailable] = useState(false)
   const [strategyType, setStrategyType] = useState('iron_fly')
   const [model, setModel] = useState('jump')
   const [spreadBps, setSpreadBps] = useState(30)
@@ -29,12 +30,14 @@ export function useResearchPage() {
         const payload = (await response.json()) as ChainResponse
         if (!cancelled) {
           setChain(payload)
+          setBackendAvailable(true)
           setStatusMessage(`Live chain loaded from ${payload.source}.`)
         }
       } catch {
         if (!cancelled) {
           setChain(demoChain)
-          setStatusMessage('Using demo market data until the local API stack is available.')
+          setBackendAvailable(false)
+          setStatusMessage('Backend unavailable. Demo chain is visible only as a placeholder.')
         }
       } finally {
         if (!cancelled) setLoadingChain(false)
@@ -85,9 +88,8 @@ export function useResearchPage() {
       setMcResult((await response.json()) as MCResponse)
       setStatusMessage('Monte Carlo result loaded from research engine.')
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      setMcResult({ ...demoMc, metrics: { ...demoMc.metrics, ev: Number((0.7 + spreadBps / 200).toFixed(2)) } })
-      setStatusMessage('Using demo Monte Carlo output until the local API stack is available.')
+      setMcResult(null)
+      setStatusMessage('Monte Carlo request failed. Start the local API stack to run simulations.')
     } finally {
       setRunning(false)
     }
@@ -102,7 +104,7 @@ export function useResearchPage() {
       setStatusMessage('Trade brief loaded from research engine.')
     } catch {
       setBriefResult(demoBrief)
-      setStatusMessage('Using demo trade brief until the local API stack is available.')
+      setStatusMessage('Trade brief unavailable. Demo brief is shown as a placeholder.')
     } finally {
       setLoadingBrief(false)
     }
@@ -121,7 +123,7 @@ export function useResearchPage() {
       setStatusMessage('Strategy analysis loaded from research engine.')
     } catch {
       setStrategyResult(demoStrategy)
-      setStatusMessage('Using demo strategy analysis until the local API stack is available.')
+      setStatusMessage('Strategy analysis unavailable. Demo analysis is shown as a placeholder.')
     } finally {
       setLoadingStrategy(false)
     }
@@ -136,7 +138,7 @@ export function useResearchPage() {
       setStatusMessage('Vol surface loaded from research engine.')
     } catch {
       setSurfaceResult(demoSurface)
-      setStatusMessage('Using demo vol surface until the local API stack is available.')
+      setStatusMessage('Vol surface unavailable. Demo surface is shown as a placeholder.')
     } finally {
       setLoadingSurface(false)
     }
@@ -145,7 +147,7 @@ export function useResearchPage() {
   return {
     chain, mcResult, briefResult, strategyResult, surfaceResult,
     running, loadingChain, loadingBrief, loadingStrategy, loadingSurface,
-    statusMessage, strategyType, model, spreadBps, slippageBps,
+    statusMessage, backendAvailable, strategyType, model, spreadBps, slippageBps,
     setStrategyType, setModel, setSpreadBps, setSlippageBps,
     rows, strategyLegs, runMc, loadBrief, analyzeStrategy, loadSurface,
   }
