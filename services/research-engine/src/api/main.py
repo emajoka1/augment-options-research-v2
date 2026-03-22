@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import FastAPI, Query, HTTPException
 from ak_system import __version__
 from ak_system.adapters.data_provider import PolygonProvider, SnapshotFileProvider
+from src.api.fallbacks import demo_chain_snapshot
 from ak_system.mc_options.calibration import ChainSnapshot, parse_chain_snapshot
 from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 from ak_system.mc_options.iv_dynamics import fit_surface_from_snapshot
@@ -46,10 +47,8 @@ async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None,
         provider = PolygonProvider(os.environ['POLYGON_API_KEY'])
     elif snapshot_path:
         provider = SnapshotFileProvider(snapshot_path)
-    else:
-        raise HTTPException(status_code=400, detail='snapshot_path is required when POLYGON_API_KEY is not set')
 
-    snap = await provider.get_chain(symbol)
+    snap = await provider.get_chain(symbol) if provider else demo_chain_snapshot(symbol)
     return {
         'symbol': symbol,
         'spot': snap.spot,
@@ -57,7 +56,7 @@ async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None,
         'ivs': snap.ivs.tolist(),
         'expiry_days': snap.expiries_days.tolist() if snap.expiries_days is not None else None,
         'returns': snap.returns.tolist() if snap.returns is not None else None,
-        'source': 'polygon' if os.environ.get('POLYGON_API_KEY') else 'snapshot_file',
+        'source': 'polygon' if os.environ.get('POLYGON_API_KEY') else ('snapshot_file' if snapshot_path else 'builtin_demo'),
         'todo': 'Replace with Polygon.io live fetch in Task 0.5.' if not os.environ.get('POLYGON_API_KEY') else None,
     }
 
@@ -110,8 +109,8 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
 
 
 @app.get('/v1/vol-surface/{symbol}', response_model=VolSurfaceResponse)
-def vol_surface(symbol: str, snapshot_path: str = Query(..., description='Local snapshot path')):
-    snap = parse_chain_snapshot(snapshot_path)
+def vol_surface(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
+    snap = parse_chain_snapshot(snapshot_path) if snapshot_path else demo_chain_snapshot(symbol)
     fit = fit_surface_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs)
     m = __import__('numpy').log(__import__('numpy').maximum(snap.strikes, 1e-12) / max(snap.spot, 1e-12))
     fitted_ivs = fit['iv_atm'] + fit['skew'] * m + fit['curv'] * (m ** 2)

@@ -25,7 +25,7 @@ export function useResearchPage() {
     const loadChain = async () => {
       setLoadingChain(true)
       try {
-        const response = await fetch(`${API_BASE}/api/v1/chain/SPY?snapshot_path=${encodeURIComponent('/tmp/demo-chain.json')}`)
+        const response = await fetch(`${API_BASE}/api/v1/chain/SPY`)
         if (!response.ok) throw new Error('chain request failed')
         const payload = (await response.json()) as ChainResponse
         if (!cancelled) {
