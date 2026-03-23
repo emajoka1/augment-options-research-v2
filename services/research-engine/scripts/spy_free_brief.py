@@ -315,9 +315,8 @@ def build_candidates(rows):
         viable = []
         for s in pool:
             debit = max(0.01, float(long_c.get("mark") or 0) - float(s.get("mark") or 0))
-            max_loss = estimate_structure_risk('debit', risk_cap=risk_cap_dollars(), debit=debit)['max_loss']
             spread_bps = two_leg_spread_bps(long_c, s, debit)
-            if max_loss <= risk_cap_dollars() and debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
+            if debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
                 viable.append(s)
         viable.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
         short_c = viable[0] if viable else None
@@ -330,10 +329,8 @@ def build_candidates(rows):
         viable = []
         for l in pool:
             credit = max(0.01, float(short_p.get("mark") or 0) - float(l.get("mark") or 0))
-            width = abs(float(short_p["strike"]) - float(l["strike"]))
-            max_loss = estimate_structure_risk('credit', risk_cap=risk_cap_dollars(), width=width, credit=credit)['max_loss']
             spread_bps = two_leg_spread_bps(short_p, l, credit)
-            if max_loss <= risk_cap_dollars() and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
+            if credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
                 viable.append(l)
         viable.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
         long_p = viable[0] if viable else None
@@ -356,10 +353,8 @@ def build_candidates(rows):
         for lc in sorted(cwing, key=lambda r: abs((r["strike"] - c["strike"]) - 5))[:4]:
             for lp in sorted(pwing, key=lambda r: abs((p["strike"] - r["strike"]) - 5))[:4]:
                 credit = max(0.01, float(p.get("mark") or 0) + float(c.get("mark") or 0) - float(lp.get("mark") or 0) - float(lc.get("mark") or 0))
-                wing = min(abs(float(p["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(c["strike"])))
-                max_loss = estimate_structure_risk('condor', risk_cap=risk_cap_dollars(), wing=wing, credit=credit)['max_loss']
                 spread_bps = (sum((l.get("ask") - l.get("bid")) for l in [p, lp, c, lc]) / max(0.01, credit)) * 10000.0
-                ok = max_loss <= risk_cap_dollars() and credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
+                ok = credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
                 if not ok:
                     continue
                 score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18)
@@ -679,12 +674,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         gates.append("execution_poor")
     if score["Total"] < 70:
         gates.append("score_below_70")
-    if ticket["positionSizeContracts"] <= 0:
-        gates.append("SIZE_TOO_LARGE")
 
     # Hard constraints for executable candidates.
-    if max_loss > risk_cap_dollars():
-        gates.append("risk_cap_exceeded")
     if candidate_type == "debit" and debit < MIN_DEBIT:
         gates.append("min_debit_not_met")
     if candidate_type in ("credit", "condor") and credit < MIN_CREDIT:
@@ -846,7 +837,7 @@ def generate_brief_payload():
                 "decision": "PASS",
                 "score": {"Total": 0},
                 "ticket": None,
-                "gateFailures": ["NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."],
+                "gateFailures": ["NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."],
                 "whys": [],
                 "counterfactuals": {},
                 "maxLossPerContract": None,
@@ -856,12 +847,8 @@ def generate_brief_payload():
 
     def near_miss(a):
         gf = a.get("gateFailures") or []
-        if "risk_cap_exceeded" in gf:
-            return "1 strike farther OTM OR reduce width"
         if "spread_bps_exceeded" in gf:
             return "needs tighter spread (~+3% net credit/debit efficiency)"
-        if "SIZE_TOO_LARGE" in gf:
-            return "DTE+2 or narrower width to reduce max loss"
         if "expected_move_mismatch" in gf:
             return "DTE+2 or shift strikes 1 step"
         return "improve credit/debit by ~3% or shift 1 strike"
@@ -884,19 +871,19 @@ def generate_brief_payload():
         mandatory_missing.append("realized_vol")
 
     no_candidates_reason = None
-    constraint_gates = {"risk_cap_exceeded", "min_debit_not_met", "min_credit_not_met", "spread_bps_exceeded", "SIZE_TOO_LARGE"}
+    constraint_gates = {"min_debit_not_met", "min_credit_not_met", "spread_bps_exceeded"}
 
     if mandatory_missing:
         final_decision = "NO TRADE"
     elif not analyses:
         final_decision = "PASS"
-        no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+        no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
     else:
         final_decision = analyses[0]["decision"]
         if all(any("NO_CANDIDATES:" in g for g in (a.get("gateFailures") or [])) for a in analyses):
-            no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+            no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
         elif all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
-            no_candidates_reason = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+            no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
 
     output = {
         "brief_meta": {

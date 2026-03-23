@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import scripts.spy_free_brief as sfb
 
 
-NO_CAND_MSG = "NO_CANDIDATES: risk_cap too low for this DTE/structure under current IV/spreads."
+NO_CAND_MSG = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
 
 
 def _row(side: str, strike: float, mark: float, *, delta: float, expiry: str = "2026-03-20", dte: int = 7):
@@ -25,7 +25,7 @@ def _row(side: str, strike: float, mark: float, *, delta: float, expiry: str = "
     }
 
 
-def test_riskcap_first_generation_enforces_cap_pre_selection(monkeypatch):
+def test_candidate_generation_no_longer_pre_filters_on_risk_cap(monkeypatch):
     monkeypatch.setattr(sfb, "MAX_RISK_DOLLARS", 75.0)
 
     rows = [
@@ -45,19 +45,10 @@ def test_riskcap_first_generation_enforces_cap_pre_selection(monkeypatch):
 
     long_c, short_c = cands["debit"]
     assert long_c is not None and short_c is not None
-    assert (float(long_c["mark"]) - float(short_c["mark"])) * 100 <= 75.0
+    assert (float(long_c["mark"]) - float(short_c["mark"])) * 100 > 75.0
 
-    short_p, long_p = cands["credit"]
-    assert short_p is not None and long_p is not None
-    credit = float(short_p["mark"]) - float(long_p["mark"])
-    width = abs(float(short_p["strike"]) - float(long_p["strike"]))
-    assert (width - credit) * 100 <= 75.0
-
-    sp, lp, sc, lc = cands["condor"]
-    if all(x is not None for x in (sp, lp, sc, lc)):
-        credit_ic = float(sp["mark"]) + float(sc["mark"]) - float(lp["mark"]) - float(lc["mark"])
-        wing = min(abs(float(sp["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(sc["strike"])))
-        assert (wing - credit_ic) * 100 <= 75.0
+    trade = sfb.build_trade("debit", [long_c, short_c], 100.0, {"ivCurrent": 0.2, "volLabel": "Neutral", "classifier": {}}, {"regime": {"riskState": "Neutral"}, "realizedVol": {"rv10": 0.2, "rv20": 0.2}})
+    assert trade["maxLossPerContract"] > 75.0
 
 
 def test_attach_mc_decision_uses_mc_engine_as_decision_source(monkeypatch):
@@ -99,8 +90,6 @@ def test_attach_mc_decision_uses_mc_engine_as_decision_source(monkeypatch):
 
 
 def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys):
-    monkeypatch.setattr(sfb, "MAX_RISK_DOLLARS", 1.0)
-
     rows = [
         _row("C", 100.0, 5.00, delta=0.40),
         _row("C", 110.0, 4.30, delta=0.18),
@@ -122,16 +111,36 @@ def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys
         "regime_snapshot",
         lambda _spot: {
             "timeUserTz": "test-time",
-            "regime": "Neutral",
+            "regime": {"riskState": "Neutral"},
             "realizedVol": {"rv10": 0.2, "rv20": 0.2},
         },
     )
-    monkeypatch.setattr(sfb, "vol_state", lambda _rows, _rv10, _rv20: {"ivCurrent": 0.2, "volLabel": "Neutral"})
+    monkeypatch.setattr(sfb, "vol_state", lambda _rows, _rv10, _rv20: {"ivCurrent": 0.2, "volLabel": "Neutral", "classifier": {}})
+
+    class FakeResult:
+        allow_trade = False
+        data_quality_status = "OK"
+        payload = {
+            "status": "FULL_REFRESH",
+            "metrics": {"ev": -1.0},
+            "multi_seed_confidence": {"ev_mean": -1.0},
+            "gates": {"allow_trade": False, "ev_gate": False},
+            "edge_attribution": {},
+            "breakevens": [100.5],
+            "assumptions": {"strategy": "call_debit_spread"},
+        }
+
+    class FakeEngine:
+        def run(self, config):
+            return FakeResult()
+
+    monkeypatch.setattr(sfb, "MCEngine", lambda: FakeEngine())
 
     sfb.main()
     payload = json.loads(capsys.readouterr().out)
     tb = payload["TRADE BRIEF"]
 
-    assert tb["NoCandidatesReason"] == NO_CAND_MSG
+    assert tb["NoCandidatesReason"] is None
     assert len(tb["Candidates"]) == 3
+    assert tb["Candidates"][0]["maxLossPerContract"] is not None
     assert tb["ClosestNearMiss"]["flipHint"]

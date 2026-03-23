@@ -220,6 +220,7 @@ with brief_tab:
                                 'decision': candidate.get('decision'),
                                 'decision_source': candidate.get('decisionSource') or 'pre_mc_rejection',
                                 'score_total': (candidate.get('score') or {}).get('Total') if isinstance(candidate.get('score'), dict) else None,
+                                'max_loss_per_contract': candidate.get('maxLossPerContract'),
                                 'mc_allow_trade': mc.get('allowTrade') if used_mc else 'not_run',
                                 'mc_status': mc.get('status') if used_mc else 'not_run',
                                 'ev': metrics.get('ev') if used_mc else None,
@@ -245,6 +246,9 @@ with brief_tab:
 
                             if not used_mc:
                                 st.info('Rejected before MC. This candidate did not make it far enough to run Monte Carlo.')
+                                x1, x2 = st.columns(2)
+                                x1.metric('Max loss / contract', candidate.get('maxLossPerContract', '—'))
+                                x2.metric('Decision source', candidate.get('decisionSource') or 'pre_mc_rejection')
                                 if candidate.get('gateFailures'):
                                     st.caption('Pre-MC gate failures: ' + ', '.join(str(x) for x in (candidate.get('gateFailures') or [])))
                                 st.write({'score': candidate.get('score'), 'ticket': candidate.get('ticket')})
