@@ -13,6 +13,46 @@ const WAIT_MS = Number(process.env.SPY_WAIT_MS || 10000);
 
 function round5(x) { return Math.round(x / 5) * 5; }
 
+function fail(msg, details = {}) {
+  console.error(JSON.stringify({ ok: false, error: msg, ...details }, null, 2));
+  process.exit(2);
+}
+
+function validateQuoteToken(qt) {
+  const dxUrl = String(qt['dxlink-url'] || '');
+  const level = String(qt.level || '');
+  const expiresAt = qt['expires-at'] || qt.expiresAt || null;
+
+  if (!qt.token) fail('Missing quote token', { reason: 'missing_token' });
+  if (!dxUrl) fail('Missing dxLink URL', { reason: 'missing_dxlink_url' });
+
+  if (/demo/i.test(level)) {
+    fail('Refusing demo quote token for live snapshot', {
+      reason: 'demo_level',
+      level,
+      dxlinkUrl: dxUrl,
+    });
+  }
+  if (/tasty-demo-ws/i.test(dxUrl) || /\/delayed$/i.test(dxUrl) || /delayed/i.test(dxUrl)) {
+    fail('Refusing delayed/demo dxLink endpoint for live snapshot', {
+      reason: 'delayed_or_demo_dxlink',
+      level,
+      dxlinkUrl: dxUrl,
+    });
+  }
+  if (expiresAt) {
+    const exp = new Date(expiresAt).getTime();
+    if (Number.isFinite(exp) && Date.now() >= exp) {
+      fail('Refusing expired quote token', {
+        reason: 'expired_token',
+        expiresAt,
+        dxlinkUrl: dxUrl,
+        level,
+      });
+    }
+  }
+}
+
 function pickContracts(chain, spotGuess) {
   const exp = [...(chain.expirations || [])].sort((a,b)=> (a['days-to-expiration']??9999) - (b['days-to-expiration']??9999)).slice(0,2);
   const center = round5(spotGuess || 600);
