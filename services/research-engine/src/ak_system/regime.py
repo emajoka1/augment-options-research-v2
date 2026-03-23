@@ -26,7 +26,7 @@ def classify_regime_rule_based(prices: np.ndarray, vol_proxy: np.ndarray, lookba
     - vol expanding/contracting: short vol MA vs long vol MA.
     """
     if len(prices) < lookback + 5 or len(vol_proxy) < lookback + 5:
-        return RegimeLabel("mean_revert", "vol_contracting")
+        return RegimeLabel("trend", "vol_expanding")
 
     returns = np.diff(np.log(prices[-(lookback + 1) :]))
     x = np.arange(len(returns))
