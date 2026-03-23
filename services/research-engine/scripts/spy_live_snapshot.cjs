@@ -10,6 +10,42 @@ const CHAIN_PATH = process.env.SPY_CHAIN_PATH || path.join(os.homedir(), 'lab/da
 const TOKEN_PATH = process.env.SPY_TOKEN_PATH || path.join(os.homedir(), 'lab/data/tastytrade/api_quote_token.json');
 const OUT_PATH = process.env.SPY_LIVE_OUT || path.join(os.homedir(), 'lab/data/tastytrade/spy_live_snapshot.json');
 const WAIT_MS = Number(process.env.SPY_WAIT_MS || 10000);
+const AUTO_REFRESH = String(process.env.SPY_AUTO_REFRESH_TOKEN || '1') !== '0';
+const FETCH_SCRIPT = process.env.SPY_FETCH_QUOTE_TOKEN_SCRIPT || path.join(__dirname, 'fetch_tasty_live_quote_token.py');
+const PYTHON = process.env.SPY_FETCH_QUOTE_TOKEN_PYTHON || path.join(__dirname, '..', '.venv', 'bin', 'python');
+const CONNECT_RETRIES = Number(process.env.SPY_CONNECT_RETRIES || 3);
+const CONNECT_BACKOFF_MS = Number(process.env.SPY_CONNECT_BACKOFF_MS || 1500);
+const MIN_SYMBOLS_WITH_DATA = Number(process.env.SPY_MIN_SYMBOLS_WITH_DATA || 5);
+const REQUIRE_UNDERLYING_QUOTE = String(process.env.SPY_REQUIRE_UNDERLYING_QUOTE || '1') !== '0';
+
+function maybeRefreshQuoteToken() {
+ if (!AUTO_REFRESH) return;
+ const missing = !fs.existsSync(TOKEN_PATH);
+ let expired = false;
+ if (!missing) {
+ try {
+ const qt = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8')).data || {};
+ const expiresAt = qt['expires-at'] || qt.expiresAt || null;
+ if (expiresAt) {
+ const exp = new Date(expiresAt).getTime();
+ expired = Number.isFinite(exp) && Date.now() >= exp;
+ }
+ } catch {
+ expired = true;
+ }
+ }
+ if (!missing && !expired) return;
+ const envNeeded = ['TT_CLIENT_ID', 'TT_CLIENT_SECRET', 'TT_REFRESH_TOKEN'];
+ const missingEnv = envNeeded.filter((k) => !process.env[k]);
+ if (missingEnv.length) {
+ fail('Quote token missing/expired and auto-refresh env is incomplete', { reason: 'missing_refresh_env', missingEnv });
+ }
+ const { spawnSync } = require('child_process');
+ const result = spawnSync(PYTHON, [FETCH_SCRIPT], { env: { ...process.env, TT_QUOTE_TOKEN_OUT: TOKEN_PATH }, encoding: 'utf8' });
+ if (result.status !== 0) {
+ fail('Auto-refresh of quote token failed', { stdout: result.stdout, stderr: result.stderr });
+ }
+}
 
 function round5(x) { return Math.round(x / 5) * 5; }
 
@@ -96,7 +132,17 @@ function pickContracts(chain, spotGuess) {
   validateQuoteToken(qt);
   const chain = JSON.parse(fs.readFileSync(CHAIN_PATH, 'utf8')).data.items[0];
 
-  const contracts = pickContracts(chain, 680);
+  const spotGuess = Number(process.env.SPY_SPOT_GUESS || 0);
+  const chainSpotHint = (() => {
+    try {
+      const exps = chain.expirations || [];
+      if (exps.length === 0) return 0;
+      const strikes = (exps[0].strikes || []).map(s => Number(s['strike-price'])).filter(Number.isFinite);
+      if (strikes.length === 0) return 0;
+      return strikes[Math.floor(strikes.length / 2)];
+    } catch { return 0; }
+  })();
+  const contracts = pickContracts(chain, spotGuess || chainSpotHint || 600);
   const symbols = contracts.map(c => c.symbol);
 
   const snapshotId = `snapshot_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
@@ -150,8 +196,27 @@ function pickContracts(chain, spotGuess) {
   await new Promise(r => setTimeout(r, WAIT_MS));
   out.finishedAt = new Date().toISOString();
 
+  // --- LIVENESS GATE ---
+  const symbolsWithData = Object.keys(out.data).length;
+  if (symbolsWithData < MIN_SYMBOLS_WITH_DATA) {
+    fail('Too few symbols with data after wait window', {
+      reason: 'insufficient_data',
+      symbolsWithData,
+      minRequired: MIN_SYMBOLS_WITH_DATA,
+      waitMs: WAIT_MS,
+    });
+  }
+  if (REQUIRE_UNDERLYING_QUOTE && !Number.isFinite(out.underlying.mark)) {
+    fail('Underlying SPY quote missing after wait window', {
+      reason: 'missing_underlying_quote',
+      underlying: out.underlying,
+      waitMs: WAIT_MS,
+    });
+  }
+  // --- END LIVENESS GATE ---
+
   fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
   fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2));
-  console.log(JSON.stringify({ ok: true, snapshot_id: snapshotId, outPath: OUT_PATH, contracts: contracts.length, symbolsWithData: Object.keys(out.data).length }, null, 2));
+  console.log(JSON.stringify({ ok: true, snapshot_id: snapshotId, outPath: OUT_PATH, contracts: contracts.length, symbolsWithData }, null, 2));
   process.exit(0);
 })();

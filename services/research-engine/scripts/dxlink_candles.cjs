@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { DXLinkFeed } = require('@dxfeed/dxlink-api');
+const { DXLinkWebSocketClient, DXLinkFeed, FeedDataFormat } = require('@dxfeed/dxlink-api');
 
 const TOKEN_PATH = process.env.SPY_TOKEN_PATH || path.join(os.homedir(), 'lab/data/tastytrade/api_quote_token.json');
 const OUT_PATH = process.env.DXLINK_CANDLE_OUT || path.join(os.homedir(), 'lab/data/tastytrade/dxlink_candles.json');
@@ -71,30 +71,28 @@ function validateQuoteToken(qt) {
     candles: [],
   };
 
-  const feed = new DXLinkFeed();
-  await feed.open(qt['dxlink-url']);
-  await feed.auth(qt.token);
-  await feed.startFeed({
-    acceptDataFormat: 'COMPACT',
-    acceptAggregationPeriod: 1,
-    acceptEventFields: {
-      Candle: ['eventType', 'eventSymbol', 'time', 'open', 'high', 'low', 'close', 'volume'],
-    },
-  });
+  const client = new DXLinkWebSocketClient();
+  client.setAuthToken(qt.token);
+  await client.connect(qt['dxlink-url']);
 
-  await feed.subscribe([{ type: 'Candle', symbol: SYMBOL, fromTime: FROM_TIME }]);
+  const feed = new DXLinkFeed(client, 'AUTO');
+  feed.configure({ acceptDataFormat: FeedDataFormat.FULL });
 
-  feed.onEvent((e) => {
-    if (e.eventType !== 'Candle') return;
-    out.candles.push({
-      eventSymbol: e.eventSymbol,
-      time: e.time,
-      open: e.open,
-      high: e.high,
-      low: e.low,
-      close: e.close,
-      volume: e.volume,
-    });
+  feed.addSubscriptions({ type: 'Candle', symbol: SYMBOL, fromTime: FROM_TIME });
+
+  feed.addEventListener((events) => {
+    for (const e of events) {
+      if (e.eventType !== 'Candle') continue;
+      out.candles.push({
+        eventSymbol: e.eventSymbol,
+        time: e.time,
+        open: e.open,
+        high: e.high,
+        low: e.low,
+        close: e.close,
+        volume: e.volume,
+      });
+    }
   });
 
   await new Promise((r) => setTimeout(r, WAIT_MS));
