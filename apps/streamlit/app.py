@@ -193,23 +193,43 @@ with brief_tab:
         code, payload = result
         render_status(code, payload, 'Trade brief loaded.')
         if 200 <= code < 300 and isinstance(payload, dict):
-            brief = payload.get('TRADE BRIEF', {})
-            col1, col2, col3 = st.columns(3)
-            col1.metric('Ticker', brief.get('Ticker', symbol))
-            col2.metric('Spot', brief.get('Spot', '—'))
-            col3.metric('Decision', brief.get('Final Decision', '—'))
+            try:
+                brief = payload.get('TRADE BRIEF', {})
+                col1, col2, col3 = st.columns(3)
+                col1.metric('Ticker', brief.get('Ticker', symbol))
+                col2.metric('Spot', brief.get('Spot', '—'))
+                col3.metric('Decision', brief.get('Final Decision', '—'))
 
-            if brief.get('NoCandidatesReason'):
-                st.warning(f"No-candidate reason: {brief['NoCandidatesReason']}")
-            if brief.get('missingRequiredData'):
-                st.caption(f"Missing required data: {', '.join(brief['missingRequiredData'])}")
+                if brief.get('NoCandidatesReason'):
+                    st.warning(f"No-candidate reason: {brief['NoCandidatesReason']}")
+                missing = brief.get('missingRequiredData') or []
+                if missing:
+                    st.caption('Missing required data: ' + ', '.join(str(x) for x in missing))
 
-            candidates = brief.get('Candidates') or []
-            if candidates:
-                st.dataframe(pd.DataFrame(candidates), use_container_width=True)
-            else:
-                st.info('No candidates were returned in the brief payload.')
-            download_json_button('Download brief JSON', f"{symbol.lower()}_brief.json", payload)
+                candidates = brief.get('Candidates') or []
+                if candidates:
+                    candidate_rows = []
+                    for idx, candidate in enumerate(candidates, start=1):
+                        if isinstance(candidate, dict):
+                            candidate_rows.append({
+                                'candidate': idx,
+                                'type': candidate.get('type'),
+                                'decision': candidate.get('decision'),
+                                'score_total': (candidate.get('score') or {}).get('Total') if isinstance(candidate.get('score'), dict) else None,
+                                'gate_failures': ', '.join(candidate.get('gateFailures') or []),
+                            })
+                        else:
+                            candidate_rows.append({'candidate': idx, 'raw': str(candidate)})
+                    st.dataframe(pd.DataFrame(candidate_rows), use_container_width=True)
+                else:
+                    st.info('No candidates were returned in the brief payload.')
+
+                with st.expander('Raw brief payload'):
+                    st.json(payload)
+                download_json_button('Download brief JSON', f"{symbol.lower()}_brief.json", payload)
+            except Exception as exc:
+                st.error(f'Brief rendering failed: {exc}')
+                st.json(payload)
         else:
             st.json(payload)
     else:
