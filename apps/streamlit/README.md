@@ -21,6 +21,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export RESEARCH_API_BASE=http://localhost:8000
 streamlit run app.py
+# or, if your launcher expects the conventional filename:
+streamlit run streamlit_app.py
 ```
 
 If you want to use a gateway/proxy instead of the raw FastAPI app, point `RESEARCH_API_BASE` at that base URL.
