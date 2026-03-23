@@ -53,6 +53,26 @@ function validateQuoteToken(qt) {
   }
 }
 
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function withRetries(label, fn) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= CONNECT_RETRIES; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (err) {
+      lastErr = err;
+      if (attempt === CONNECT_RETRIES) break;
+      await sleep(CONNECT_BACKOFF_MS * attempt);
+    }
+  }
+  fail(`DXLink ${label} failed after retries`, {
+    reason: 'dxlink_retry_exhausted',
+    attempts: CONNECT_RETRIES,
+    message: String(lastErr && lastErr.message ? lastErr.message : lastErr),
+  });
+}
+
 function pickContracts(chain, spotGuess) {
   const exp = [...(chain.expirations || [])].sort((a,b)=> (a['days-to-expiration']??9999) - (b['days-to-expiration']??9999)).slice(0,2);
   const center = round5(spotGuess || 600);

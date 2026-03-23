@@ -52,3 +52,12 @@ Optional knobs:
 - `SPY_AUTO_REFRESH_TOKEN=1` (default on)
 - `SPY_FETCH_QUOTE_TOKEN_PYTHON`
 - `SPY_FETCH_QUOTE_TOKEN_SCRIPT`
+- `SPY_CONNECT_RETRIES` (default `3`)
+- `SPY_CONNECT_BACKOFF_MS` (default `1500`)
+
+## Retry behavior
+The snapshot script now retries these DXLink startup stages with simple backoff:
+- websocket open
+- auth
+- feed setup
+- subscription
