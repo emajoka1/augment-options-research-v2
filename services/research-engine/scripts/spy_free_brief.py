@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import subprocess
 import uuid
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -20,6 +21,9 @@ from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 CHAIN_PATH = os.environ.get("SPY_CHAIN_PATH", os.path.expanduser("~/lab/data/tastytrade/SPY_nested_chain.json"))
 DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", os.path.expanduser("~/lab/data/tastytrade/dxlink_snapshot.json"))
 LIVE_PATH = os.environ.get("SPY_LIVE_PATH", os.path.expanduser("~/lab/data/tastytrade/spy_live_snapshot.json"))
+LIVE_MAX_AGE_MINUTES = int(os.environ.get("SPY_LIVE_MAX_AGE_MINUTES", "5"))
+TRIGGER_LIVE_REFRESH = os.environ.get("SPY_TRIGGER_LIVE_REFRESH", "1").lower() in {"1", "true", "yes"}
+LIVE_SNAPSHOT_SCRIPT = os.environ.get("SPY_LIVE_SCRIPT", str(ROOT / "scripts" / "spy_live_snapshot.cjs"))
 
 MIN_OI = int(os.environ.get("SPY_MIN_OI", "1000"))
 MIN_VOL = int(os.environ.get("SPY_MIN_VOL", "100"))
@@ -75,6 +79,27 @@ def live_is_fresh(live: dict, max_age_minutes: int = 5) -> bool:
         return datetime.now(timezone.utc) - t <= timedelta(minutes=max_age_minutes)
     except Exception:
         return False
+
+
+def refresh_live_snapshot_if_needed(path: str = LIVE_PATH, max_age_minutes: int = LIVE_MAX_AGE_MINUTES):
+    live = load_live(path)
+    if live and live_is_fresh(live, max_age_minutes=max_age_minutes):
+        return live
+    if not TRIGGER_LIVE_REFRESH:
+        return live
+    try:
+        subprocess.run(
+            ["node", LIVE_SNAPSHOT_SCRIPT],
+            check=True,
+            cwd=str(ROOT),
+            env=os.environ.copy(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except Exception:
+        return load_live(path)
+    return load_live(path)
 
 
 def get_spot_from_dx(path: str, max_age_minutes: int = 5):
@@ -275,10 +300,10 @@ def watchlist_from_live(live):
     return rows
 
 
-def choose_leg(rows, side, dte_lo, dte_hi, d_lo, d_hi):
+def choose_leg(rows, side, dte_lo, dte_hi, d_lo, d_hi, require_liquid=True):
     cands = [
         r for r in rows
-        if r.get("liquid") and r.get("side") == side and r.get("delta") is not None
+        if (r.get("liquid") or not require_liquid) and r.get("side") == side and r.get("delta") is not None
         and dte_lo <= (r.get("dte") or 999) <= dte_hi and d_lo <= abs(float(r["delta"])) <= d_hi
     ]
     if not cands:
@@ -725,6 +750,53 @@ def build_trade(candidate_type, legs, spot, vol, context):
     }
 
 
+def _candidate_structure_payload(candidate_type, legs):
+    present = [leg for leg in legs if leg is not None]
+    dte = min((l.get("dte") or 999) for l in present) if present else None
+    expiry = present[0].get("expiry") if present else None
+    leg_rows = []
+    for leg in present:
+        leg_rows.append({
+            "symbol": leg.get("symbol"),
+            "side": leg.get("side"),
+            "expiry": leg.get("expiry"),
+            "dte": leg.get("dte"),
+            "strike": leg.get("strike"),
+            "mark": leg.get("mark"),
+            "bid": leg.get("bid"),
+            "ask": leg.get("ask"),
+            "delta": leg.get("delta"),
+            "iv": leg.get("iv"),
+            "openInterest": leg.get("openInterest"),
+            "dayVolume": leg.get("dayVolume"),
+        })
+
+    pricing = {}
+    try:
+        if candidate_type == "debit" and len(present) >= 2:
+            a, b = present[:2]
+            debit = max(0.01, float(a.get("mark") or 0) - float(b.get("mark") or 0))
+            width = abs(float(b.get("strike")) - float(a.get("strike")))
+            spread_bps = (((a.get("ask") - a.get("bid")) + (b.get("ask") - b.get("bid"))) / max(0.01, debit)) * 10000.0
+            pricing = {"entryDebit": round(debit, 2), "width": round(width, 2), "spreadBps": round(spread_bps, 1)}
+        elif candidate_type == "credit" and len(present) >= 2:
+            a, b = present[:2]
+            credit = max(0.01, float(a.get("mark") or 0) - float(b.get("mark") or 0))
+            width = abs(float(a.get("strike")) - float(b.get("strike")))
+            spread_bps = (((a.get("ask") - a.get("bid")) + (b.get("ask") - b.get("bid"))) / max(0.01, credit)) * 10000.0
+            pricing = {"entryCredit": round(credit, 2), "width": round(width, 2), "spreadBps": round(spread_bps, 1)}
+        elif candidate_type == "condor" and len(present) >= 4:
+            sp, lp, sc, lc = present[:4]
+            credit = max(0.01, float(sp.get("mark") or 0) + float(sc.get("mark") or 0) - float(lp.get("mark") or 0) - float(lc.get("mark") or 0))
+            wing = min(abs(float(sp.get("strike")) - float(lp.get("strike"))), abs(float(lc.get("strike")) - float(sc.get("strike"))))
+            spread_bps = (sum((l.get("ask") - l.get("bid")) for l in [sp, lp, sc, lc]) / max(0.01, credit)) * 10000.0
+            pricing = {"entryCredit": round(credit, 2), "width": round(wing, 2), "spreadBps": round(spread_bps, 1)}
+    except Exception:
+        pricing = pricing or {}
+
+    return {"name": candidate_type, "expiry": expiry, "dte": dte, "legs": leg_rows, "pricing": pricing}
+
+
 def _strategy_legs_for_candidate(candidate_type, legs):
     if candidate_type == "debit":
         long_c, short_c = legs
@@ -789,7 +861,7 @@ def attach_mc_decision(candidate, legs, spot):
 
 
 def generate_brief_payload():
-    live = load_live(LIVE_PATH)
+    live = refresh_live_snapshot_if_needed(LIVE_PATH, max_age_minutes=LIVE_MAX_AGE_MINUTES)
     _ = load_chain(CHAIN_PATH)  # keep compatibility for environment
 
     brief_id = f"brief_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
@@ -798,7 +870,7 @@ def generate_brief_payload():
     spot = None
     spot_source = None
     spot_ts = None
-    live_fresh = bool(live and live_is_fresh(live))
+    live_fresh = bool(live and live_is_fresh(live, max_age_minutes=LIVE_MAX_AGE_MINUTES))
 
     cboe_spot, cboe_src, cboe_ts = get_spot_from_cboe_quote("SPY")
     if cboe_spot:
@@ -832,6 +904,46 @@ def generate_brief_payload():
 
     candidates = build_candidates(rows) if rows else {"debit": (None, None), "credit": (None, None), "condor": (None, None, None, None)}
 
+    # fallback explanatory structures from raw rows even when nothing qualifies as liquid
+    if rows:
+        if all(x is None for x in candidates["debit"]):
+            long_c_fb = choose_leg(rows, "C", 5, 14, 0.35, 0.45, require_liquid=False) or choose_leg(rows, "C", 5, 14, 0.30, 0.55, require_liquid=False)
+            short_c_fb = None
+            if long_c_fb:
+                pool = [r for r in rows if r.get("side") == "C" and r.get("expiry") == long_c_fb.get("expiry") and (r.get("strike") or 0) > (long_c_fb.get("strike") or 0)]
+                pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs(((r.get("strike") or 0) - (long_c_fb.get("strike") or 0)) - 10)))
+                short_c_fb = pool[0] if pool else None
+            candidates["debit"] = (long_c_fb, short_c_fb)
+
+        if all(x is None for x in candidates["credit"]):
+            short_p_fb = choose_leg(rows, "P", 7, 35, 0.20, 0.30, require_liquid=False) or choose_leg(rows, "P", 7, 35, 0.15, 0.35, require_liquid=False)
+            long_p_fb = None
+            if short_p_fb:
+                pool = [r for r in rows if r.get("side") == "P" and r.get("expiry") == short_p_fb.get("expiry") and (r.get("strike") or 0) < (short_p_fb.get("strike") or 0)]
+                pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs(((short_p_fb.get("strike") or 0) - (r.get("strike") or 0)) - 10)))
+                long_p_fb = pool[0] if pool else None
+            candidates["credit"] = (short_p_fb, long_p_fb)
+
+        if all(x is None for x in candidates["condor"]):
+            expiries = sorted({r.get("expiry") for r in rows if r.get("expiry") and 5 <= (r.get("dte") or 999) <= 30})
+            best_fb = None
+            for exp in expiries:
+                calls = [r for r in rows if r.get("expiry") == exp and r.get("side") == "C" and 0.10 <= abs(float(r.get("delta") or 99)) <= 0.30]
+                puts = [r for r in rows if r.get("expiry") == exp and r.get("side") == "P" and 0.10 <= abs(float(r.get("delta") or 99)) <= 0.30]
+                if not calls or not puts:
+                    continue
+                c = sorted(calls, key=lambda r: abs(abs(float(r.get("delta") or 0)) - 0.18))[0]
+                p = sorted(puts, key=lambda r: abs(abs(float(r.get("delta") or 0)) - 0.18))[0]
+                cwing = [r for r in rows if r.get("expiry") == exp and r.get("side") == "C" and (r.get("strike") or 0) > (c.get("strike") or 0)]
+                pwing = [r for r in rows if r.get("expiry") == exp and r.get("side") == "P" and (r.get("strike") or 0) < (p.get("strike") or 0)]
+                if cwing and pwing:
+                    lc = sorted(cwing, key=lambda r: abs(((r.get("strike") or 0) - (c.get("strike") or 0)) - 5))[0]
+                    lp = sorted(pwing, key=lambda r: abs(((p.get("strike") or 0) - (r.get("strike") or 0)) - 5))[0]
+                    best_fb = (p, lp, c, lc)
+                    break
+            if best_fb:
+                candidates["condor"] = best_fb
+
     analyses = []
     debit_legs = list(candidates["debit"])
     credit_legs = list(candidates["credit"])
@@ -845,15 +957,17 @@ def generate_brief_payload():
     # Always provide top-3 view (even if PASS) with explicit fail reasons.
     for t in ["debit", "credit", "condor"]:
         if not any(a.get("type") == t for a in analyses):
+            fallback_legs = debit_legs if t == "debit" else (credit_legs if t == "credit" else condor_legs)
             analyses.append({
                 "type": t,
                 "decision": "PASS",
                 "score": {"Total": 0},
                 "ticket": None,
                 "gateFailures": ["NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."],
-                "whys": [],
+                "whys": ["Best available structure failed before candidate construction; see attempted legs/pricing below."],
                 "counterfactuals": {},
                 "maxLossPerContract": None,
+                "structure": _candidate_structure_payload(t, fallback_legs),
             })
     analyses.sort(key=lambda x: (x.get("decision") == "TRADE", x.get("score", {}).get("Total", 0)), reverse=True)
     analyses = analyses[:3]
