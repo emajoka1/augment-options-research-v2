@@ -103,8 +103,8 @@ export function useResearchPage() {
       setBriefResult((await response.json()) as BriefResponse)
       setStatusMessage('Trade brief loaded from research engine.')
     } catch {
-      setBriefResult(demoBrief)
-      setStatusMessage('Trade brief unavailable. Demo brief is shown as a placeholder.')
+      setBriefResult(null)
+      setStatusMessage('Trade brief unavailable. Start the local API stack to load a brief.')
     } finally {
       setLoadingBrief(false)
     }
@@ -132,7 +132,7 @@ export function useResearchPage() {
   const loadSurface = async () => {
     setLoadingSurface(true)
     try {
-      const response = await fetch(`${API_BASE}/api/v1/vol-surface/${chain.symbol}?snapshot_path=${encodeURIComponent('/tmp/demo-chain.json')}`)
+      const response = await fetch(`${API_BASE}/api/v1/vol-surface/${chain.symbol}`)
       if (!response.ok) throw new Error('surface request failed')
       setSurfaceResult((await response.json()) as VolSurfaceResponse)
       setStatusMessage('Vol surface loaded from research engine.')
@@ -150,8 +150,5 @@ export function useResearchPage() {
     statusMessage, backendAvailable, strategyType, model, spreadBps, slippageBps,
     setStrategyType, setModel, setSpreadBps, setSlippageBps,
     rows, strategyLegs, runMc, loadBrief, analyzeStrategy, loadSurface,
-  }
-}
-dBrief, analyzeStrategy, loadSurface,
   }
 }

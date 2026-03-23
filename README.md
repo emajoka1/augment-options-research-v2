@@ -44,6 +44,11 @@ pnpm dev
 pnpm test
 pnpm run dev:research
 pnpm run test:research
+make run-streamlit
+make demo-local
+make web-install
+make web-dev
+make web-build
 ```
 
 ## Current product surface
