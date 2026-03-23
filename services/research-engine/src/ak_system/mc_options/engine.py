@@ -407,9 +407,9 @@ class MCEngine:
 
         for b in range(n_batches):
             seed_b = base_seed + b * 1009
-            pnl_mid, pot_mid = simulate_strategy_paths_fn(strategy=strategy, S0=spot, r=config.r, q=config.q, n_paths=n_paths_batch, n_steps=n_steps, dt=dt, iv_params=ivp, exit_rules=exits, friction=FrictionConfig(spread_bps=0.0, slippage_bps=0.0, partial_fill_prob=0.0), model=config.model, seed=seed_b, event_risk_high=config.event_risk_high)
-            pnl_real, pot_real = simulate_strategy_paths_fn(strategy=strategy, S0=spot, r=config.r, q=config.q, n_paths=n_paths_batch, n_steps=n_steps, dt=dt, iv_params=ivp, exit_rules=exits, friction=friction, model=config.model, seed=seed_b, event_risk_high=config.event_risk_high)
-            pnl_stress, pot_stress = simulate_strategy_paths_fn(strategy=strategy, S0=spot, r=config.r, q=config.q, n_paths=n_paths_batch, n_steps=n_steps, dt=dt, iv_params=ivp, exit_rules=exits, friction=FrictionConfig(spread_bps=config.spread_bps * 1.8, slippage_bps=config.slippage_bps * 1.6, partial_fill_prob=min(0.6, config.partial_fill_prob * 1.5)), model=config.model, seed=seed_b, event_risk_high=config.event_risk_high)
+            pnl_mid, pot_mid = simulate_strategy_paths_fn(strategy=strategy, S0=spot, r=config.r, q=config.q, n_paths=n_paths_batch, n_steps=n_steps, dt=dt, iv_params=ivp, exit_rules=exits, friction=FrictionConfig(spread_bps=0.0, slippage_bps=0.0, partial_fill_prob=0.0), model=config.model, seed=seed_b, event_risk_high=config.event_risk_high, jump_params=jump_used)
+            pnl_real, pot_real = simulate_strategy_paths_fn(strategy=strategy, S0=spot, r=config.r, q=config.q, n_paths=n_paths_batch, n_steps=n_steps, dt=dt, iv_params=ivp, exit_rules=exits, friction=friction, model=config.model, seed=seed_b, event_risk_high=config.event_risk_high, jump_params=jump_used)
+            pnl_stress, pot_stress = simulate_strategy_paths_fn(strategy=strategy, S0=spot, r=config.r, q=config.q, n_paths=n_paths_batch, n_steps=n_steps, dt=dt, iv_params=ivp, exit_rules=exits, friction=FrictionConfig(spread_bps=config.spread_bps * 1.8, slippage_bps=config.slippage_bps * 1.6, partial_fill_prob=min(0.6, config.partial_fill_prob * 1.5)), model=config.model, seed=seed_b, event_risk_high=config.event_risk_high, jump_params=jump_used)
             mid_batch.append(compute_metrics_fn(pnl_mid, pot_mid))
             real_batch.append(compute_metrics_fn(pnl_real, pot_real))
             stress_batch.append(compute_metrics_fn(pnl_stress, pot_stress))

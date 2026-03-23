@@ -93,6 +93,7 @@ def simulate_strategy_paths(
     model: str = "jump",
     seed: int = 42,
     event_risk_high: bool = False,
+    jump_params: JumpDiffusionParams | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     heston_var = None
@@ -108,12 +109,16 @@ def simulate_strategy_paths(
             seed=seed,
         )
     else:
+        effective_jump_params = jump_params or JumpDiffusionParams(mu=r - q, sigma=iv_params.iv_atm)
+        if jump_params is None:
+            effective_jump_params.mu = r - q
+            effective_jump_params.sigma = iv_params.iv_atm
         paths = simulate_jump_diffusion_paths(
             S0,
             n_paths,
             n_steps,
             dt,
-            JumpDiffusionParams(mu=r - q, sigma=iv_params.iv_atm, jump_lambda=0.35, jump_mu=-0.05, jump_sigma=0.18),
+            effective_jump_params,
             seed=seed,
         )
 
