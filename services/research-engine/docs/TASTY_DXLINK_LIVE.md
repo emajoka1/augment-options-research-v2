@@ -54,6 +54,8 @@ Optional knobs:
 - `SPY_FETCH_QUOTE_TOKEN_SCRIPT`
 - `SPY_CONNECT_RETRIES` (default `3`)
 - `SPY_CONNECT_BACKOFF_MS` (default `1500`)
+- `SPY_MIN_SYMBOLS_WITH_DATA` (default `5`)
+- `SPY_REQUIRE_UNDERLYING_QUOTE` (default `1`)
 
 ## Retry behavior
 The snapshot script now retries these DXLink startup stages with simple backoff:
@@ -61,3 +63,10 @@ The snapshot script now retries these DXLink startup stages with simple backoff:
 - auth
 - feed setup
 - subscription
+
+## Liveness checks
+After the wait window, the snapshot script now fails if:
+- too few subscribed symbols produced any data
+- the underlying symbol never produced quote/trade data
+
+This helps distinguish a healthy stream from a connected-but-stale or partially broken feed.
