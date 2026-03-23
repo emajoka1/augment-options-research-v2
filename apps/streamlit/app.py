@@ -288,7 +288,10 @@ with brief_tab:
                                 st.markdown('**MC gates**')
                                 st.json(gates)
                                 st.markdown('**Strategy**')
-                                st.json(strategy)
+                                if isinstance(strategy, (dict, list)):
+                                    st.json(strategy)
+                                else:
+                                    st.write(strategy)
                             with right:
                                 st.markdown('**Multi-seed confidence**')
                                 st.json(multi)
