@@ -158,6 +158,3 @@ def generate_brief(symbol: str):
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     return result.payload
-brief(symbol: str):
-    result = BriefGenerator().generate(symbol)
-    return result.payload

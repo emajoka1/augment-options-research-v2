@@ -158,15 +158,17 @@ function pickContracts(chain, spotGuess) {
 
   const client = new DXLinkWebSocketClient();
   client.setAuthToken(qt.token);
-  await client.connect(qt['dxlink-url']);
+  await withRetries('connect', () => client.connect(qt['dxlink-url']));
 
   const feed = new DXLinkFeed(client, 'AUTO');
   feed.configure({ acceptDataFormat: FeedDataFormat.FULL });
 
-  feed.addSubscriptions({ type: 'Quote', symbol: 'SPY' });
-  for (const s of symbols) {
-    for (const t of ['Quote','Greeks','Trade','Summary']) feed.addSubscriptions({ type: t, symbol: s });
-  }
+  await withRetries('subscription', async () => {
+    feed.addSubscriptions({ type: 'Quote', symbol: 'SPY' });
+    for (const s of symbols) {
+      for (const t of ['Quote', 'Greeks', 'Trade', 'Summary']) feed.addSubscriptions({ type: t, symbol: s });
+    }
+  });
 
   feed.addEventListener((events) => {
     for (const e of events) {

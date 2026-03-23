@@ -580,4 +580,3 @@ class MCEngine:
             artifact_json, artifact_md = str(j), str(m)
             summary = {"json": artifact_json, "md": artifact_md, **summary}
         return MCEngineResult(payload=payload, metrics=metrics, multi_seed=payload["multi_seed_confidence"], gates=gates, edge_attribution=attribution, breakevens=breakevens, allow_trade=gates["allow_trade"], data_quality_status=data_quality_status, artifact_json=artifact_json, artifact_md=artifact_md, summary=summary)
-ary)
