@@ -104,6 +104,7 @@ def main() -> None:
         "infer_regime_distribution": infer_regime_distribution,
         "load_local_returns_fallback": load_local_returns_fallback,
         "write_report_json_md": write_report_json_md,
+        "compute_breakevens": compute_breakevens,
         "get_artifact_base": _artifact_base,
     }
     result = MCEngine(deps=deps).run(parse_args())

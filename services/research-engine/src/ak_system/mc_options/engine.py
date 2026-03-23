@@ -14,6 +14,7 @@ from ak_system.mc_options.calibration import calibrate_from_snapshot, defaults_f
 from ak_system.mc_options.gates import compute_edge_attribution, evaluate_survival_gates
 from ak_system.mc_options.metrics import compute_metrics, percentiles
 from ak_system.mc_options.models import GBMParams, HestonParams, JumpDiffusionParams, simulate_gbm_paths, simulate_heston_paths, simulate_jump_diffusion_paths
+from ak_system.mc_options.iv_dynamics import evolve_iv_state, surface_iv
 from ak_system.mc_options.report import write_report_json_md
 from ak_system.mc_options.simulator import FrictionConfig, simulate_strategy_paths
 from ak_system.mc_options.strategy import (
@@ -24,6 +25,7 @@ from ak_system.mc_options.strategy import (
     make_put_calendar,
     make_put_debit_spread,
     make_put_diagonal,
+    strategy_mid_value,
 )
 from ak_system.regime import classify_regime_rule_based
 from ak_system.storage import persist_mc_result
@@ -274,6 +276,7 @@ class MCEngine:
         infer_regime_distribution_fn = self._dep("infer_regime_distribution", infer_regime_distribution)
         load_local_returns_fallback_fn = self._dep("load_local_returns_fallback", load_local_returns_fallback)
         write_report_json_md_fn = self._dep("write_report_json_md", write_report_json_md)
+        compute_breakevens_fn = self._dep("compute_breakevens", compute_breakevens)
         get_artifact_base_fn = self._dep("get_artifact_base", lambda root, paths: get_service_artifact_dir(root))
 
         paths = build_paths_fn(cwd)
@@ -439,8 +442,12 @@ class MCEngine:
             "ev_stress": float(np.mean(ev_stress_vals)),
         }
 
-        entry_proxy = float(max(1e-6, -float(metrics.avg_loss) if metrics.avg_loss < 0 else abs(metrics.avg_win)))
-        breakevens, breakeven_reason, breakeven_solver = compute_breakevens(strategy, entry_proxy)
+        entry_iv_state = evolve_iv_state(ivp, n_steps=n_steps, dt=dt, returns=np.zeros(n_steps), seed=config.seed)
+        tau0 = strategy.expiry_years
+        tau_by_leg0 = {idx: max((leg.expiry_years if leg.expiry_years is not None else strategy.expiry_years), 1e-6) for idx, leg in enumerate(strategy.legs)}
+        iv_map_entry = {leg.strike: surface_iv(spot, leg.strike, tau_by_leg0[idx], entry_iv_state, 0, ivp) for idx, leg in enumerate(strategy.legs)}
+        entry_value = float(strategy_mid_value(strategy, spot, config.r, config.q, tau0, iv_map_entry, tau_by_leg=tau_by_leg0))
+        breakevens, breakeven_reason, breakeven_solver = compute_breakevens_fn(strategy, entry_value)
         breakeven_failure_code = None if breakevens is not None else f"BREAKEVEN_SOLVER_FAIL:{breakeven_reason or 'unknown'}"
 
         regime_probs = infer_regime_distribution_fn(config.model, spot, ivp.iv_atm, n_steps, dt, config.r, config.q, config.seed + 7)
