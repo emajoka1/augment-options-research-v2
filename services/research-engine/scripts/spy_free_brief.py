@@ -329,32 +329,42 @@ def expected_move(spot, iv, dte):
 def build_candidates(rows):
     liquid = [r for r in rows if r.get("liquid")]
 
-    def two_leg_spread_bps(a, b, denom):
-        return (((a.get("ask") - a.get("bid")) + (b.get("ask") - b.get("bid")))/max(0.01, denom))*10000.0
+    def choose_best_across_windows(side, windows, delta_targets):
+        for dte_lo, dte_hi in windows:
+            for d_lo, d_hi in delta_targets:
+                leg = choose_leg(liquid, side, dte_lo, dte_hi, d_lo, d_hi)
+                if leg:
+                    return leg
+        return None
+
+    # trader-realistic DTE bands
+    debit_windows = [(7, 21), (22, 35), (36, 45)]
+    credit_windows = [(14, 35), (7, 21), (36, 45)]
+    condor_windows = [(14, 45), (7, 21)]
 
     # debit
-    long_c = choose_leg(liquid, "C", 5, 14, 0.35, 0.45) or choose_leg(liquid, "C", 5, 14, 0.30, 0.55)
+    long_c = choose_best_across_windows("C", debit_windows, [(0.35, 0.45), (0.30, 0.55), (0.20, 0.60)])
     short_c = None
     if long_c:
         pool = [r for r in liquid if r["side"] == "C" and r["expiry"] == long_c["expiry"] and r["strike"] > long_c["strike"]]
-        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
+        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10), -(r.get("dayVolume") or 0)))
         short_c = pool[0] if pool else None
 
     # credit put
-    short_p = choose_leg(liquid, "P", 7, 35, 0.20, 0.30) or choose_leg(liquid, "P", 7, 35, 0.15, 0.35)
+    short_p = choose_best_across_windows("P", credit_windows, [(0.20, 0.30), (0.15, 0.35), (0.10, 0.40)])
     long_p = None
     if short_p:
         pool = [r for r in liquid if r["side"] == "P" and r["expiry"] == short_p["expiry"] and r["strike"] < short_p["strike"]]
-        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
+        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10), -(r.get("dayVolume") or 0)))
         long_p = pool[0] if pool else None
 
     # condor paired by expiry
     short_c_ic = short_p_ic = long_c_ic = long_p_ic = None
-    expiries = sorted({r["expiry"] for r in liquid if 5 <= (r.get("dte") or 999) <= 30})
+    expiries = sorted({r["expiry"] for r in liquid if any(lo <= (r.get("dte") or 999) <= hi for lo, hi in condor_windows)})
     best = None
     for exp in expiries:
-        calls = [r for r in liquid if r["expiry"] == exp and r["side"] == "C" and 0.10 <= abs(float(r.get("delta") or 99)) <= 0.30]
-        puts = [r for r in liquid if r["expiry"] == exp and r["side"] == "P" and 0.10 <= abs(float(r.get("delta") or 99)) <= 0.30]
+        calls = [r for r in liquid if r["expiry"] == exp and r["side"] == "C" and 0.08 <= abs(float(r.get("delta") or 99)) <= 0.35]
+        puts = [r for r in liquid if r["expiry"] == exp and r["side"] == "P" and 0.08 <= abs(float(r.get("delta") or 99)) <= 0.35]
         if not calls or not puts:
             continue
         c = sorted(calls, key=lambda r: abs(abs(float(r["delta"])) - 0.18))[0]
