@@ -221,6 +221,24 @@ def spread_pct(row):
     return max(0.0, (a - b) / m)
 
 
+def _to_float(v):
+    try:
+        if v in (None, ""):
+            return None
+        return float(v)
+    except Exception:
+        return None
+
+
+def _to_int(v):
+    try:
+        if v in (None, ""):
+            return None
+        return int(float(v))
+    except Exception:
+        return None
+
+
 def is_liquid(row):
     sp = spread_pct(row)
     return (
@@ -237,10 +255,10 @@ def watchlist_from_live(live):
     for c in live.get("contracts", []):
         d = data.get(c["symbol"], {})
         row = {
-            "expiry": c["expiry"], "dte": c["dte"], "strike": c["strike"], "side": c["side"], "symbol": c["symbol"],
-            "bid": d.get("bid"), "ask": d.get("ask"), "mark": d.get("mark"), "last": d.get("last"),
-            "delta": d.get("delta"), "iv": d.get("iv"), "openInterest": d.get("openInterest"), "dayVolume": d.get("dayVolume"),
-            "confidence": "delayed-live",
+            "expiry": c["expiry"], "dte": _to_int(c.get("dte")), "strike": _to_float(c.get("strike")), "side": c["side"], "symbol": c["symbol"],
+            "bid": _to_float(d.get("bid")), "ask": _to_float(d.get("ask")), "mark": _to_float(d.get("mark")), "last": _to_float(d.get("last")),
+            "delta": _to_float(d.get("delta")), "iv": _to_float(d.get("iv")), "openInterest": _to_int(d.get("openInterest")), "dayVolume": _to_int(d.get("dayVolume")),
+            "confidence": "dxlink-live",
         }
         sp = spread_pct(row)
         row["spreadPct"] = round(sp, 4) if sp is not None else None
