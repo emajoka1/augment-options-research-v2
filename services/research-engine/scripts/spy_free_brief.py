@@ -307,35 +307,23 @@ def build_candidates(rows):
     def two_leg_spread_bps(a, b, denom):
         return (((a.get("ask") - a.get("bid")) + (b.get("ask") - b.get("bid")))/max(0.01, denom))*10000.0
 
-    # debit (risk-cap aware)
+    # debit
     long_c = choose_leg(liquid, "C", 5, 14, 0.35, 0.45) or choose_leg(liquid, "C", 5, 14, 0.30, 0.55)
     short_c = None
     if long_c:
         pool = [r for r in liquid if r["side"] == "C" and r["expiry"] == long_c["expiry"] and r["strike"] > long_c["strike"]]
-        viable = []
-        for s in pool:
-            debit = max(0.01, float(long_c.get("mark") or 0) - float(s.get("mark") or 0))
-            spread_bps = two_leg_spread_bps(long_c, s, debit)
-            if debit >= MIN_DEBIT and spread_bps <= MAX_SPREAD_BPS:
-                viable.append(s)
-        viable.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
-        short_c = viable[0] if viable else None
+        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.2), abs((r["strike"] - long_c["strike"]) - 10)))
+        short_c = pool[0] if pool else None
 
-    # credit put (risk-cap aware)
+    # credit put
     short_p = choose_leg(liquid, "P", 7, 35, 0.20, 0.30) or choose_leg(liquid, "P", 7, 35, 0.15, 0.35)
     long_p = None
     if short_p:
         pool = [r for r in liquid if r["side"] == "P" and r["expiry"] == short_p["expiry"] and r["strike"] < short_p["strike"]]
-        viable = []
-        for l in pool:
-            credit = max(0.01, float(short_p.get("mark") or 0) - float(l.get("mark") or 0))
-            spread_bps = two_leg_spread_bps(short_p, l, credit)
-            if credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS:
-                viable.append(l)
-        viable.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
-        long_p = viable[0] if viable else None
+        pool.sort(key=lambda r: (abs(abs(float(r.get("delta") or 0)) - 0.12), abs((short_p["strike"] - r["strike"]) - 10)))
+        long_p = pool[0] if pool else None
 
-    # condor paired by expiry (risk-cap aware width/credit)
+    # condor paired by expiry
     short_c_ic = short_p_ic = long_c_ic = long_p_ic = None
     expiries = sorted({r["expiry"] for r in liquid if 5 <= (r.get("dte") or 999) <= 30})
     best = None
@@ -352,11 +340,6 @@ def build_candidates(rows):
             continue
         for lc in sorted(cwing, key=lambda r: abs((r["strike"] - c["strike"]) - 5))[:4]:
             for lp in sorted(pwing, key=lambda r: abs((p["strike"] - r["strike"]) - 5))[:4]:
-                credit = max(0.01, float(p.get("mark") or 0) + float(c.get("mark") or 0) - float(lp.get("mark") or 0) - float(lc.get("mark") or 0))
-                spread_bps = (sum((l.get("ask") - l.get("bid")) for l in [p, lp, c, lc]) / max(0.01, credit)) * 10000.0
-                ok = credit >= MIN_CREDIT and spread_bps <= MAX_SPREAD_BPS
-                if not ok:
-                    continue
                 score = abs(abs(float(c["delta"])) - 0.18) + abs(abs(float(p["delta"])) - 0.18)
                 if best is None or score < best[0]:
                     best = (score, c, p, lc, lp)
@@ -693,6 +676,23 @@ def build_trade(candidate_type, legs, spot, vol, context):
         "altIfIvPlus10": "If IV +10 pts, shift to defined-risk short premium (credit spread/condor) with wider wings",
     }
 
+    structure_legs = []
+    for leg in legs:
+        structure_legs.append({
+            "symbol": leg.get("symbol"),
+            "side": leg.get("side"),
+            "expiry": leg.get("expiry"),
+            "dte": leg.get("dte"),
+            "strike": leg.get("strike"),
+            "mark": leg.get("mark"),
+            "bid": leg.get("bid"),
+            "ask": leg.get("ask"),
+            "delta": leg.get("delta"),
+            "iv": leg.get("iv"),
+            "openInterest": leg.get("openInterest"),
+            "dayVolume": leg.get("dayVolume"),
+        })
+
     return {
         "type": candidate_type,
         "expectedMove": {
@@ -709,6 +709,19 @@ def build_trade(candidate_type, legs, spot, vol, context):
         "decision": decision,
         "gateFailures": gates,
         "maxLossPerContract": round(max_loss, 2),
+        "structure": {
+            "name": candidate_type,
+            "expiry": legs[0].get("expiry") if legs else None,
+            "dte": dte,
+            "legs": structure_legs,
+            "pricing": {
+                "spreadPctMulti": round(spread_multi * 100, 2),
+                "spreadBps": round(spread_bps, 1),
+                "entryDebit": round(debit, 2) if candidate_type == "debit" else None,
+                "entryCredit": round(credit, 2) if candidate_type in ("credit", "condor") else None,
+                "width": round(width, 2) if candidate_type in ("debit", "credit") else round(wing, 2),
+            },
+        },
     }
 
 

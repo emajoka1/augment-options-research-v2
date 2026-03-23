@@ -251,7 +251,20 @@ with brief_tab:
                                 x2.metric('Decision source', candidate.get('decisionSource') or 'pre_mc_rejection')
                                 if candidate.get('gateFailures'):
                                     st.caption('Pre-MC gate failures: ' + ', '.join(str(x) for x in (candidate.get('gateFailures') or [])))
-                                st.write({'score': candidate.get('score'), 'ticket': candidate.get('ticket')})
+                                structure = candidate.get('structure') or {}
+                                pricing = structure.get('pricing') or {}
+                                st.markdown('**Attempted structure**')
+                                st.write({
+                                    'name': structure.get('name'),
+                                    'expiry': structure.get('expiry'),
+                                    'dte': structure.get('dte'),
+                                    'pricing': pricing,
+                                })
+                                legs = structure.get('legs') or []
+                                if legs:
+                                    st.dataframe(pd.DataFrame(legs), use_container_width=True)
+                                st.markdown('**Accompanying strategy / ticket context**')
+                                st.write({'score': candidate.get('score'), 'ticket': candidate.get('ticket'), 'whys': candidate.get('whys')})
                                 continue
 
                             c1, c2, c3, c4 = st.columns(4)
