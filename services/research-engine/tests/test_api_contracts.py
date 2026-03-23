@@ -58,3 +58,4 @@ async def test_strategy_contract_contains_greeks_aggregate():
     payload = response.json()
     assert response.status_code == 200
     assert set(payload['greeks_aggregate'].keys()) == {'delta', 'gamma', 'vega', 'theta_daily'}
+    assert any(abs(payload['greeks_aggregate'][k]) > 0 for k in payload['greeks_aggregate'])

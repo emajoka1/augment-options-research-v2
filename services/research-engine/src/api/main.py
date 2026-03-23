@@ -102,12 +102,24 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
     max_profit, max_loss = max_profit_max_loss(strategy, grid, req.r, req.q, iv_by_strike, entry_value)
     strategy_name = 'custom' if len(req.legs) > 4 else ('long_straddle' if len(req.legs) == 2 and all(leg.side == 'long' for leg in req.legs) else 'iron_fly')
     exit_rules = default_exit_rules_for_strategy(strategy_name, expiry_days=expiry_years * 365)
+    greeks = {'delta': 0.0, 'gamma': 0.0, 'vega': 0.0, 'theta_daily': 0.0}
+    for leg in strategy.legs:
+        tau_leg = leg.expiry_years or expiry_years
+        sigma_leg = iv_by_strike.get(leg.strike, 0.25)
+        g = asdict(bs_greeks(req.spot, leg.strike, req.r, req.q, sigma_leg, tau_leg, leg.option_type))
+        sign = 1.0 if leg.side == 'long' else -1.0
+        qty = float(leg.qty)
+        greeks['delta'] += sign * qty * g['delta']
+        greeks['gamma'] += sign * qty * g['gamma']
+        greeks['vega'] += sign * qty * g['vega']
+        greeks['theta_daily'] += sign * qty * g['theta_daily']
+
     return {
         'entry_value': entry_value,
         'breakevens': breakevens,
         'max_profit': max_profit,
         'max_loss': max_loss,
-        'greeks_aggregate': {'delta': 0.0, 'gamma': 0.0, 'vega': 0.0, 'theta_daily': 0.0},
+        'greeks_aggregate': greeks,
         'exit_rules': {
             'take_profit_pct': exit_rules.take_profit_pct,
             'stop_loss_pct': exit_rules.stop_loss_pct,
