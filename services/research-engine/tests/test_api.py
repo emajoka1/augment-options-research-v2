@@ -57,7 +57,8 @@ async def test_mc_run_endpoint(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_vol_surface_and_risk_endpoints(sample_snapshot):
+async def test_vol_surface_and_risk_endpoints(sample_snapshot, monkeypatch):
+    monkeypatch.setattr('src.api.main.ALLOW_DEMO_FALLBACK', False)
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         vs = await client.get('/v1/vol-surface/SPY', params={'snapshot_path': str(sample_snapshot)})
         rk = await client.get('/v1/risk/estimate', params={'structure_type': 'iron_fly', 'risk_cap': 250, 'credit': 1.5, 'width': 5, 'wing': 5})

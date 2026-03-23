@@ -32,6 +32,7 @@ from src.api.models import (
 )
 
 app = FastAPI(title='Research Engine API', version=__version__)
+ALLOW_DEMO_FALLBACK = os.environ.get('ALLOW_DEMO_FALLBACK', '0').lower() in {'1', 'true', 'yes'}
 
 
 
@@ -140,5 +141,8 @@ def risk_estimate(structure_type: str, risk_cap: float, debit: float = 0.0, cred
 
 @app.post('/v1/brief/{symbol}', response_model=BriefResponse)
 def generate_brief(symbol: str):
+    result = BriefGenerator().generate(symbol)
+    return result.payload
+brief(symbol: str):
     result = BriefGenerator().generate(symbol)
     return result.payload
