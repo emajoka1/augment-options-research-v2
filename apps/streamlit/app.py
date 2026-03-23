@@ -213,17 +213,18 @@ with brief_tab:
                         if isinstance(candidate, dict):
                             mc = candidate.get('mc') or {}
                             metrics = mc.get('metrics') or {}
+                            used_mc = candidate.get('decisionSource') == 'mc_engine' and bool(mc)
                             candidate_rows.append({
                                 'candidate': idx,
                                 'type': candidate.get('type'),
                                 'decision': candidate.get('decision'),
-                                'decision_source': candidate.get('decisionSource'),
+                                'decision_source': candidate.get('decisionSource') or 'pre_mc_rejection',
                                 'score_total': (candidate.get('score') or {}).get('Total') if isinstance(candidate.get('score'), dict) else None,
-                                'mc_allow_trade': mc.get('allowTrade'),
-                                'mc_status': mc.get('status'),
-                                'ev': metrics.get('ev'),
-                                'pop': metrics.get('pop'),
-                                'cvar95': metrics.get('cvar95'),
+                                'mc_allow_trade': mc.get('allowTrade') if used_mc else 'not_run',
+                                'mc_status': mc.get('status') if used_mc else 'not_run',
+                                'ev': metrics.get('ev') if used_mc else None,
+                                'pop': metrics.get('pop') if used_mc else None,
+                                'cvar95': metrics.get('cvar95') if used_mc else None,
                                 'gate_failures': ', '.join(candidate.get('gateFailures') or []),
                             })
                         else:
@@ -240,6 +241,14 @@ with brief_tab:
                             gates = mc.get('gates') or {}
                             attr = mc.get('edgeAttribution') or {}
                             strategy = mc.get('strategy') or {}
+                            used_mc = candidate.get('decisionSource') == 'mc_engine' and bool(mc)
+
+                            if not used_mc:
+                                st.info('Rejected before MC. This candidate did not make it far enough to run Monte Carlo.')
+                                if candidate.get('gateFailures'):
+                                    st.caption('Pre-MC gate failures: ' + ', '.join(str(x) for x in (candidate.get('gateFailures') or [])))
+                                st.write({'score': candidate.get('score'), 'ticket': candidate.get('ticket')})
+                                continue
 
                             c1, c2, c3, c4 = st.columns(4)
                             c1.metric('Decision source', candidate.get('decisionSource', '—'))
