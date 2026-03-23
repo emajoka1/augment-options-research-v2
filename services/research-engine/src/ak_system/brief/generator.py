@@ -22,20 +22,7 @@ class BriefGenerator:
 
     def generate(self, symbol: str = 'SPY') -> BriefResult:
         if symbol.upper() != 'SPY':
-            return BriefResult(
-                symbol=symbol.upper(),
-                source='placeholder',
-                payload={
-                    'TRADE BRIEF': {
-                        'Ticker': symbol.upper(),
-                        'Spot': None,
-                        'Candidates': [],
-                        'Final Decision': 'NO TRADE',
-                        'NoCandidatesReason': 'Generic brief generation is not yet extracted for non-SPY symbols.',
-                        'missingRequiredData': ['symbol_specific_brief_logic_not_migrated'],
-                    }
-                },
-            )
+            raise NotImplementedError('Brief generation is currently supported for SPY only')
 
         payload = self._load_spy_module().generate_brief_payload()
         return BriefResult(symbol='SPY', payload=payload, source='native_module')

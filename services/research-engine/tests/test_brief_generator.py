@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from ak_system.brief.generator import BriefGenerator
 
 
-def test_brief_generator_returns_placeholder_for_non_spy():
-    result = BriefGenerator().generate('QQQ')
-    assert result.symbol == 'QQQ'
-    assert result.payload['TRADE BRIEF']['Final Decision'] == 'NO TRADE'
+def test_brief_generator_rejects_non_spy():
+    with pytest.raises(NotImplementedError):
+        BriefGenerator().generate('QQQ')
 
 
 def test_brief_generator_uses_native_module_for_spy(monkeypatch):

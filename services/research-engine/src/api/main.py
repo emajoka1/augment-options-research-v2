@@ -141,7 +141,10 @@ def risk_estimate(structure_type: str, risk_cap: float, debit: float = 0.0, cred
 
 @app.post('/v1/brief/{symbol}', response_model=BriefResponse)
 def generate_brief(symbol: str):
-    result = BriefGenerator().generate(symbol)
+    try:
+        result = BriefGenerator().generate(symbol)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
     return result.payload
 brief(symbol: str):
     result = BriefGenerator().generate(symbol)
