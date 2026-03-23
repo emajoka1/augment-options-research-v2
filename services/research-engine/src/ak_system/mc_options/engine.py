@@ -309,7 +309,7 @@ class MCEngine:
         else:
             _, jump_used, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
 
-        if rv10 is None or rv20 is None:
+        if (rv10 is None or rv20 is None) and config.allow_local_rv_fallback:
             fallback_rets, fb_source, fb_asof, fb_freshness = load_local_returns_fallback_fn(cwd)
             if fallback_rets is not None:
                 fb_rv10 = realized_vol(fallback_rets, 10, dt)
@@ -580,3 +580,4 @@ class MCEngine:
             artifact_json, artifact_md = str(j), str(m)
             summary = {"json": artifact_json, "md": artifact_md, **summary}
         return MCEngineResult(payload=payload, metrics=metrics, multi_seed=payload["multi_seed_confidence"], gates=gates, edge_attribution=attribution, breakevens=breakevens, allow_trade=gates["allow_trade"], data_quality_status=data_quality_status, artifact_json=artifact_json, artifact_md=artifact_md, summary=summary)
+ary)
