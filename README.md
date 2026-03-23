@@ -28,6 +28,16 @@ pnpm install
 pnpm dev
 ```
 
+### Streamlit
+```bash
+cd apps/streamlit
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+export RESEARCH_API_BASE=http://localhost:8000
+streamlit run app.py
+```
+
 ### Root helpers
 ```bash
 pnpm dev
