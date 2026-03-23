@@ -81,7 +81,7 @@ function pickContracts(chain, spotGuess) {
   const out = {
     snapshotId,
     startedAt: new Date().toISOString(),
-    source: 'dxlink-delayed',
+    source: 'dxlink-live',
     level: qt.level,
     underlying: { symbol: 'SPY' },
     contracts,
