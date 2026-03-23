@@ -211,16 +211,63 @@ with brief_tab:
                     candidate_rows = []
                     for idx, candidate in enumerate(candidates, start=1):
                         if isinstance(candidate, dict):
+                            mc = candidate.get('mc') or {}
+                            metrics = mc.get('metrics') or {}
                             candidate_rows.append({
                                 'candidate': idx,
                                 'type': candidate.get('type'),
                                 'decision': candidate.get('decision'),
+                                'decision_source': candidate.get('decisionSource'),
                                 'score_total': (candidate.get('score') or {}).get('Total') if isinstance(candidate.get('score'), dict) else None,
+                                'mc_allow_trade': mc.get('allowTrade'),
+                                'mc_status': mc.get('status'),
+                                'ev': metrics.get('ev'),
+                                'pop': metrics.get('pop'),
+                                'cvar95': metrics.get('cvar95'),
                                 'gate_failures': ', '.join(candidate.get('gateFailures') or []),
                             })
                         else:
                             candidate_rows.append({'candidate': idx, 'raw': str(candidate)})
                     st.dataframe(pd.DataFrame(candidate_rows), use_container_width=True)
+
+                    for idx, candidate in enumerate(candidates, start=1):
+                        if not isinstance(candidate, dict):
+                            continue
+                        with st.expander(f"Candidate {idx}: {candidate.get('type', 'unknown')} · {candidate.get('decision', '—')}"):
+                            mc = candidate.get('mc') or {}
+                            metrics = mc.get('metrics') or {}
+                            multi = mc.get('multiSeedConfidence') or {}
+                            gates = mc.get('gates') or {}
+                            attr = mc.get('edgeAttribution') or {}
+                            strategy = mc.get('strategy') or {}
+
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric('Decision source', candidate.get('decisionSource', '—'))
+                            c2.metric('MC allow trade', mc.get('allowTrade', '—'))
+                            c3.metric('EV', metrics.get('ev', '—'))
+                            c4.metric('POP', metrics.get('pop', '—'))
+
+                            d1, d2, d3 = st.columns(3)
+                            d1.metric('CVaR95', metrics.get('cvar95', '—'))
+                            d2.metric('Data quality', mc.get('dataQualityStatus', '—'))
+                            d3.metric('MC status', mc.get('status', '—'))
+
+                            if candidate.get('gateFailures'):
+                                st.caption('Gate failures: ' + ', '.join(str(x) for x in (candidate.get('gateFailures') or [])))
+                            if mc.get('breakevens') is not None:
+                                st.write({'breakevens': mc.get('breakevens')})
+
+                            left, right = st.columns(2)
+                            with left:
+                                st.markdown('**MC gates**')
+                                st.json(gates)
+                                st.markdown('**Strategy**')
+                                st.json(strategy)
+                            with right:
+                                st.markdown('**Multi-seed confidence**')
+                                st.json(multi)
+                                st.markdown('**Edge attribution**')
+                                st.json(attr)
                 else:
                     st.info('No candidates were returned in the brief payload.')
 

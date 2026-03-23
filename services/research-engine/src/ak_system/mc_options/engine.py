@@ -18,13 +18,17 @@ from ak_system.mc_options.iv_dynamics import evolve_iv_state, surface_iv
 from ak_system.mc_options.report import write_report_json_md
 from ak_system.mc_options.simulator import FrictionConfig, simulate_strategy_paths
 from ak_system.mc_options.strategy import (
+    Leg,
+    StrategyDef,
     compute_breakevens,
     default_exit_rules_for_strategy,
+    make_iron_condor,
     make_iron_fly,
     make_long_straddle,
     make_put_calendar,
     make_put_debit_spread,
     make_put_diagonal,
+    make_vertical,
     strategy_mid_value,
 )
 from ak_system.regime import classify_regime_rule_based
@@ -47,6 +51,7 @@ class MCEngineConfig:
     seed: int = 42
     model: Literal["gbm", "jump", "heston"] = "jump"
     strategy_type: str = "iron_fly"
+    strategy_legs: list[dict] | None = None
     spread_bps: float = 30.0
     slippage_bps: float = 8.0
     partial_fill_prob: float = 0.1
@@ -81,7 +86,10 @@ class MCEngineResult:
     summary: dict = field(default_factory=dict)
 
 
-def build_strategy(example: str, spot: float, expiry_years: float):
+def build_strategy(example: str, spot: float, expiry_years: float, strategy_legs: list[dict] | None = None):
+    if strategy_legs:
+        return StrategyDef(example, [Leg(**leg) for leg in strategy_legs], expiry_years)
+
     k = round(spot)
     if example == "iron_fly":
         return make_iron_fly(center=k, wing=max(2.0, round(spot * 0.01)), expiry_years=expiry_years, qty=1)
@@ -89,6 +97,13 @@ def build_strategy(example: str, spot: float, expiry_years: float):
         return make_long_straddle(K=k, expiry_years=expiry_years, qty=1)
     if example == "put_debit_spread":
         return make_put_debit_spread(long_strike=k, short_strike=k - max(1.0, round(spot * 0.003)), expiry_years=expiry_years, qty=1)
+    if example == "call_debit_spread":
+        return make_vertical("call", long_strike=k, short_strike=k + max(1.0, round(spot * 0.003)), expiry_years=expiry_years, qty=1)
+    if example == "put_credit_spread":
+        return StrategyDef("put_credit_spread", [Leg("short", "put", k, 1), Leg("long", "put", k - max(1.0, round(spot * 0.003)), 1)], expiry_years)
+    if example == "iron_condor":
+        wing = max(2.0, round(spot * 0.008))
+        return make_iron_condor(short_put=k - wing, long_put=k - (2 * wing), short_call=k + wing, long_call=k + (2 * wing), expiry_years=expiry_years, qty=1)
     if example == "put_calendar":
         return make_put_calendar(strike=k, front_expiry_years=max(expiry_years * 0.4, 1 / 365), back_expiry_years=expiry_years, qty=1)
     if example == "put_diagonal":
@@ -338,7 +353,7 @@ class MCEngine:
         else:
             data_quality_status = "OK"
 
-        strategy = build_strategy(config.example, spot, expiry_years)
+        strategy = build_strategy(config.example, spot, expiry_years, strategy_legs=config.strategy_legs)
         config.strategy_name = strategy.name
         exits = default_exit_rules_for_strategy(strategy.name, expiry_days=config.expiry_days)
         friction = FrictionConfig(spread_bps=config.spread_bps, slippage_bps=config.slippage_bps, partial_fill_prob=config.partial_fill_prob)

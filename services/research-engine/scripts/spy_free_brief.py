@@ -15,6 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ak_system.risk.estimator import estimate_structure_risk, risk_cap_dollars as shared_risk_cap_dollars
+from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 
 CHAIN_PATH = os.environ.get("SPY_CHAIN_PATH", os.path.expanduser("~/lab/data/tastytrade/SPY_nested_chain.json"))
 DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", os.path.expanduser("~/lab/data/tastytrade/dxlink_snapshot.json"))
@@ -30,6 +31,12 @@ MAX_RISK_DOLLARS = float(os.environ.get("SPY_MAX_RISK_DOLLARS", "250"))
 MIN_DEBIT = float(os.environ.get("SPY_MIN_DEBIT", "0.05"))
 MIN_CREDIT = float(os.environ.get("SPY_MIN_CREDIT", "0.05"))
 MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "25"))
+MC_N_BATCHES = int(os.environ.get("SPY_BRIEF_MC_N_BATCHES", "2"))
+MC_PATHS_PER_BATCH = int(os.environ.get("SPY_BRIEF_MC_PATHS_PER_BATCH", "250"))
+MC_DT_DAYS = float(os.environ.get("SPY_BRIEF_MC_DT_DAYS", "0.5"))
+MC_N_BATCHES = int(os.environ.get("SPY_BRIEF_MC_N_BATCHES", "2"))
+MC_PATHS_PER_BATCH = int(os.environ.get("SPY_BRIEF_MC_PATHS_PER_BATCH", "250"))
+MC_DT_DAYS = float(os.environ.get("SPY_BRIEF_MC_DT_DAYS", "0.5"))
 
 
 def risk_cap_dollars() -> float:
@@ -714,6 +721,69 @@ def build_trade(candidate_type, legs, spot, vol, context):
     }
 
 
+def _strategy_legs_for_candidate(candidate_type, legs):
+    if candidate_type == "debit":
+        long_c, short_c = legs
+        return [
+            {"side": "long", "option_type": "call", "strike": float(long_c["strike"]), "qty": 1},
+            {"side": "short", "option_type": "call", "strike": float(short_c["strike"]), "qty": 1},
+        ]
+    if candidate_type == "credit":
+        short_p, long_p = legs
+        return [
+            {"side": "short", "option_type": "put", "strike": float(short_p["strike"]), "qty": 1},
+            {"side": "long", "option_type": "put", "strike": float(long_p["strike"]), "qty": 1},
+        ]
+    sp, lp, sc, lc = legs
+    return [
+        {"side": "short", "option_type": "put", "strike": float(sp["strike"]), "qty": 1},
+        {"side": "long", "option_type": "put", "strike": float(lp["strike"]), "qty": 1},
+        {"side": "short", "option_type": "call", "strike": float(sc["strike"]), "qty": 1},
+        {"side": "long", "option_type": "call", "strike": float(lc["strike"]), "qty": 1},
+    ]
+
+
+def attach_mc_decision(candidate, legs, spot):
+    if candidate is None or spot in (None, 0):
+        return candidate
+
+    dte = min((l.get("dte") or 999) for l in legs if l is not None)
+    strategy_type = {"debit": "call_debit_spread", "credit": "put_credit_spread", "condor": "iron_condor"}[candidate["type"]]
+    mc_result = MCEngine().run(
+        MCEngineConfig(
+            symbol="SPY",
+            spot=float(spot),
+            expiry_days=float(max(dte, 1)),
+            dt_days=MC_DT_DAYS,
+            n_batches=max(1, MC_N_BATCHES),
+            paths_per_batch=max(100, MC_PATHS_PER_BATCH),
+            strategy_type=strategy_type,
+            strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
+            write_artifacts=False,
+        )
+    )
+
+    candidate["decisionSource"] = "mc_engine"
+    candidate["mc"] = {
+        "status": mc_result.payload.get("status"),
+        "allowTrade": bool(mc_result.allow_trade),
+        "dataQualityStatus": mc_result.data_quality_status,
+        "metrics": mc_result.payload.get("metrics"),
+        "multiSeedConfidence": mc_result.payload.get("multi_seed_confidence"),
+        "gates": mc_result.payload.get("gates"),
+        "edgeAttribution": mc_result.payload.get("edge_attribution"),
+        "breakevens": mc_result.payload.get("breakevens"),
+        "strategy": mc_result.payload.get("assumptions", {}).get("strategy"),
+    }
+    candidate["decision"] = "TRADE" if mc_result.allow_trade else "PASS"
+
+    mc_gates = mc_result.payload.get("gates") or {}
+    failed_mc_gates = sorted([f"mc:{k}" for k, v in mc_gates.items() if k != "allow_trade" and v is False])
+    existing = [g for g in (candidate.get("gateFailures") or []) if not g.startswith("mc:")]
+    candidate["gateFailures"] = existing if mc_result.allow_trade else (existing + failed_mc_gates or existing)
+    return candidate
+
+
 def generate_brief_payload():
     live = load_live(LIVE_PATH)
     _ = load_chain(CHAIN_PATH)  # keep compatibility for environment
@@ -759,11 +829,14 @@ def generate_brief_payload():
     candidates = build_candidates(rows) if rows else {"debit": (None, None), "credit": (None, None), "condor": (None, None, None, None)}
 
     analyses = []
-    analyses.append(build_trade("debit", list(candidates["debit"]), spot, vol, context))
-    analyses.append(build_trade("credit", list(candidates["credit"]), spot, vol, context))
-    analyses.append(build_trade("condor", list(candidates["condor"]), spot, vol, context))
+    debit_legs = list(candidates["debit"])
+    credit_legs = list(candidates["credit"])
+    condor_legs = list(candidates["condor"])
+    analyses.append(attach_mc_decision(build_trade("debit", debit_legs, spot, vol, context), debit_legs, spot))
+    analyses.append(attach_mc_decision(build_trade("credit", credit_legs, spot, vol, context), credit_legs, spot))
+    analyses.append(attach_mc_decision(build_trade("condor", condor_legs, spot, vol, context), condor_legs, spot))
     analyses = [a for a in analyses if a is not None]
-    analyses.sort(key=lambda x: x["score"]["Total"], reverse=True)
+    analyses.sort(key=lambda x: (x.get("decision") == "TRADE", x["score"]["Total"]), reverse=True)
 
     # Always provide top-3 view (even if PASS) with explicit fail reasons.
     for t in ["debit", "credit", "condor"]:
@@ -778,7 +851,7 @@ def generate_brief_payload():
                 "counterfactuals": {},
                 "maxLossPerContract": None,
             })
-    analyses.sort(key=lambda x: x.get("score", {}).get("Total", 0), reverse=True)
+    analyses.sort(key=lambda x: (x.get("decision") == "TRADE", x.get("score", {}).get("Total", 0)), reverse=True)
     analyses = analyses[:3]
 
     def near_miss(a):

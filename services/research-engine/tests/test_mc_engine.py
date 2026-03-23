@@ -15,6 +15,28 @@ def test_mc_engine_supports_custom_strategy(tmp_path):
     assert result.payload['assumptions']['spot'] == 600
 
 
+def test_mc_engine_accepts_explicit_strategy_legs(tmp_path):
+    result = MCEngine().run(
+        MCEngineConfig(
+            spot=600,
+            strategy_type='call_debit_spread',
+            strategy_legs=[
+                {'side': 'long', 'option_type': 'call', 'strike': 600.0, 'qty': 1},
+                {'side': 'short', 'option_type': 'call', 'strike': 605.0, 'qty': 1},
+            ],
+            n_batches=1,
+            paths_per_batch=100,
+            expiry_days=5,
+            dt_days=1,
+            output_root=str(tmp_path),
+            write_artifacts=False,
+        )
+    )
+    assert result.payload['assumptions']['strategy'] == 'call_debit_spread'
+    assert [leg['strike'] for leg in result.payload['assumptions']['legs']] == [600.0, 605.0]
+    assert [leg['side'] for leg in result.payload['assumptions']['legs']] == ['long', 'short']
+
+
 def test_mc_engine_skip_shape(tmp_path):
     engine = MCEngine()
     cfg = MCEngineConfig(n_batches=1, paths_per_batch=100, expiry_days=1, dt_days=1, output_root=str(tmp_path), write_artifacts=True)

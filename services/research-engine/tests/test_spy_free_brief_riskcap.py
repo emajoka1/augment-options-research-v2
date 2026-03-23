@@ -60,6 +60,44 @@ def test_riskcap_first_generation_enforces_cap_pre_selection(monkeypatch):
         assert (wing - credit_ic) * 100 <= 75.0
 
 
+def test_attach_mc_decision_uses_mc_engine_as_decision_source(monkeypatch):
+    candidate = {
+        "type": "debit",
+        "decision": "PASS",
+        "gateFailures": ["score_below_70"],
+        "score": {"Total": 72},
+    }
+    legs = [_row("C", 500.0, 5.0, delta=0.4), _row("C", 505.0, 4.2, delta=0.2)]
+
+    class FakeResult:
+        allow_trade = True
+        data_quality_status = "OK"
+        payload = {
+            "status": "FULL_REFRESH",
+            "metrics": {"ev": 0.8},
+            "multi_seed_confidence": {"ev_mean": 0.7},
+            "gates": {"allow_trade": True, "ev_gate": True},
+            "edge_attribution": {"explainable": True},
+            "breakevens": [500.8],
+            "assumptions": {"strategy": "call_debit_spread"},
+        }
+
+    class FakeEngine:
+        def run(self, config):
+            assert config.strategy_type == "call_debit_spread"
+            assert config.strategy_legs[0]["side"] == "long"
+            assert config.strategy_legs[1]["side"] == "short"
+            return FakeResult()
+
+    monkeypatch.setattr(sfb, "MCEngine", lambda: FakeEngine())
+    out = sfb.attach_mc_decision(candidate, legs, 500.0)
+    assert out["decisionSource"] == "mc_engine"
+    assert out["decision"] == "TRADE"
+    assert out["mc"]["allowTrade"] is True
+    assert out["mc"]["strategy"] == "call_debit_spread"
+    assert out["gateFailures"] == ["score_below_70"]
+
+
 def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys):
     monkeypatch.setattr(sfb, "MAX_RISK_DOLLARS", 1.0)
 
