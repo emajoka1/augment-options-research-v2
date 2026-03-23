@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 import httpx
+import pandas as pd
 import streamlit as st
 
 DEFAULT_API_BASE = os.environ.get('RESEARCH_API_BASE', 'http://localhost:8000').rstrip('/')
@@ -63,7 +64,10 @@ def get_http_client() -> httpx.Client:
 
 def api_get(base: str, path: str, params: dict[str, Any] | None = None) -> tuple[int, Any]:
     client = get_http_client()
-    resp = client.get(f'{base}{path}', params=params)
+    try:
+        resp = client.get(f'{base}{path}', params=params)
+    except Exception as exc:
+        return 0, {'error': str(exc), 'kind': 'network_error'}
     try:
         return resp.status_code, resp.json()
     except Exception:
@@ -72,7 +76,10 @@ def api_get(base: str, path: str, params: dict[str, Any] | None = None) -> tuple
 
 def api_post(base: str, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
     client = get_http_client()
-    resp = client.post(f'{base}{path}', json=payload)
+    try:
+        resp = client.post(f'{base}{path}', json=payload)
+    except Exception as exc:
+        return 0, {'error': str(exc), 'kind': 'network_error'}
     try:
         return resp.status_code, resp.json()
     except Exception:
@@ -96,6 +103,29 @@ def cached_surface(base: str, symbol: str, snapshot_path: str) -> tuple[int, Any
     return api_get(base, f'/v1/vol-surface/{symbol}', params=params)
 
 
+def render_status(code: int, payload: Any, success_text: str) -> None:
+    if code == 0:
+        st.error(f"Request failed before a response was received: {payload.get('error', payload)}")
+    elif 200 <= code < 300:
+        st.success(success_text)
+    elif code == 501:
+        st.warning(f"Endpoint says this is not implemented yet: {payload}")
+    elif code == 503:
+        st.warning(f"Backend is up, but live data/snapshot input is missing: {payload}")
+    else:
+        st.error(f'HTTP {code}: {payload}')
+
+
+def download_json_button(label: str, filename: str, payload: Any) -> None:
+    st.download_button(
+        label,
+        data=json.dumps(payload, indent=2),
+        file_name=filename,
+        mime='application/json',
+        use_container_width=True,
+    )
+
+
 with st.sidebar:
     st.subheader('Connection')
     api_base = st.text_input('API base URL', key='api_base').rstrip('/')
@@ -112,13 +142,14 @@ with st.sidebar:
         st.session_state['last_chain'] = None
         st.session_state['last_brief'] = None
         st.session_state['last_surface'] = None
-        st.success('Cleared cached GET responses.')
+        st.session_state['last_strategy'] = None
+        st.success('Cleared cached GET responses and last displayed results.')
 
 health = st.session_state.get('last_health')
 if health:
     code, payload = health
     with st.expander('Health', expanded=code != 200):
-        st.write({'status_code': code})
+        render_status(code, payload, 'Backend health check passed.')
         st.json(payload)
 
 chain_tab, brief_tab, surface_tab, strategy_tab, deploy_tab = st.tabs(
@@ -132,8 +163,24 @@ with chain_tab:
     result = st.session_state.get('last_chain')
     if result:
         code, payload = result
-        st.write({'status_code': code})
-        st.json(payload)
+        render_status(code, payload, 'Chain loaded.')
+        if 200 <= code < 300 and isinstance(payload, dict):
+            col1, col2, col3 = st.columns(3)
+            col1.metric('Symbol', payload.get('symbol', '—'))
+            col2.metric('Spot', payload.get('spot', '—'))
+            col3.metric('Source', payload.get('source', '—'))
+
+            strikes = payload.get('strikes') or []
+            ivs = payload.get('ivs') or []
+            expiry_days = payload.get('expiry_days') or [None] * len(strikes)
+            df = pd.DataFrame({'strike': strikes, 'iv': ivs, 'expiry_days': expiry_days})
+            st.dataframe(df, use_container_width=True)
+            if not df.empty:
+                chart_df = df[['strike', 'iv']].set_index('strike')
+                st.line_chart(chart_df)
+            download_json_button('Download chain JSON', f"{symbol.lower()}_chain.json", payload)
+        else:
+            st.json(payload)
     else:
         st.info('Load a chain to inspect strikes, IVs, and source metadata.')
 
@@ -144,8 +191,27 @@ with brief_tab:
     result = st.session_state.get('last_brief')
     if result:
         code, payload = result
-        st.write({'status_code': code})
-        st.json(payload)
+        render_status(code, payload, 'Trade brief loaded.')
+        if 200 <= code < 300 and isinstance(payload, dict):
+            brief = payload.get('TRADE BRIEF', {})
+            col1, col2, col3 = st.columns(3)
+            col1.metric('Ticker', brief.get('Ticker', symbol))
+            col2.metric('Spot', brief.get('Spot', '—'))
+            col3.metric('Decision', brief.get('Final Decision', '—'))
+
+            if brief.get('NoCandidatesReason'):
+                st.warning(f"No-candidate reason: {brief['NoCandidatesReason']}")
+            if brief.get('missingRequiredData'):
+                st.caption(f"Missing required data: {', '.join(brief['missingRequiredData'])}")
+
+            candidates = brief.get('Candidates') or []
+            if candidates:
+                st.dataframe(pd.DataFrame(candidates), use_container_width=True)
+            else:
+                st.info('No candidates were returned in the brief payload.')
+            download_json_button('Download brief JSON', f"{symbol.lower()}_brief.json", payload)
+        else:
+            st.json(payload)
     else:
         st.info('Load a brief to inspect current trade-decision output for the selected ticker.')
 
@@ -156,8 +222,23 @@ with surface_tab:
     result = st.session_state.get('last_surface')
     if result:
         code, payload = result
-        st.write({'status_code': code})
-        st.json(payload)
+        render_status(code, payload, 'Vol surface loaded.')
+        if 200 <= code < 300 and isinstance(payload, dict):
+            col1, col2, col3 = st.columns(3)
+            col1.metric('IV ATM', round(float(payload.get('iv_atm', 0.0)), 4))
+            col2.metric('Skew', round(float(payload.get('skew', 0.0)), 4))
+            col3.metric('Curvature', round(float(payload.get('curv', 0.0)), 4))
+
+            strikes = payload.get('strikes') or []
+            ivs = payload.get('ivs') or []
+            fitted = payload.get('fitted_ivs') or []
+            df = pd.DataFrame({'strike': strikes, 'observed_iv': ivs, 'fitted_iv': fitted})
+            st.dataframe(df, use_container_width=True)
+            if not df.empty:
+                st.line_chart(df.set_index('strike')[['observed_iv', 'fitted_iv']])
+            download_json_button('Download surface JSON', f"{symbol.lower()}_surface.json", payload)
+        else:
+            st.json(payload)
     else:
         st.info('Load the fitted vol surface for the selected ticker.')
 
@@ -187,8 +268,31 @@ with strategy_tab:
     result = st.session_state.get('last_strategy')
     if result:
         code, payload = result
-        st.write({'status_code': code})
-        st.json(payload)
+        render_status(code, payload, 'Strategy analysis loaded.')
+        if 200 <= code < 300 and isinstance(payload, dict):
+            col1, col2, col3 = st.columns(3)
+            col1.metric('Entry value', round(float(payload.get('entry_value', 0.0)), 4))
+            col2.metric('Max profit', round(float(payload.get('max_profit', 0.0)), 4))
+            col3.metric('Max loss', round(float(payload.get('max_loss', 0.0)), 4))
+
+            greeks = payload.get('greeks_aggregate') or {}
+            g1, g2, g3, g4 = st.columns(4)
+            g1.metric('Delta', round(float(greeks.get('delta', 0.0)), 4))
+            g2.metric('Gamma', round(float(greeks.get('gamma', 0.0)), 4))
+            g3.metric('Vega', round(float(greeks.get('vega', 0.0)), 4))
+            g4.metric('Theta/day', round(float(greeks.get('theta_daily', 0.0)), 4))
+
+            left, right = st.columns(2)
+            with left:
+                st.markdown('**Breakevens**')
+                st.write(payload.get('breakevens'))
+            with right:
+                st.markdown('**Exit rules**')
+                st.json(payload.get('exit_rules', {}))
+
+            download_json_button('Download strategy JSON', f"{symbol.lower()}_strategy.json", payload)
+        else:
+            st.json(payload)
     else:
         st.info('Analyze a strategy to inspect entry value, breakevens, greeks, and exit rules.')
 
