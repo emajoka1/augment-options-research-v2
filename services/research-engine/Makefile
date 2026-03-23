@@ -11,3 +11,6 @@ test:
 
 smoke:
 	PYTHONPATH=$(PYTHONPATH) ./.venv/bin/python -m pytest tests/test_api.py tests/test_brief_api.py tests/test_mc_jobs_api.py -q
+
+tasty-quote-token:
+	./.venv/bin/python scripts/fetch_tasty_live_quote_token.py
