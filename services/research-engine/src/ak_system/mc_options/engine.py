@@ -56,6 +56,7 @@ class MCEngineConfig:
     force_refresh: bool = False
     dq_fail_dedupe_cooldown_minutes: float = 30.0
     rv_freshness_sla_seconds: float = 3600.0
+    allow_local_rv_fallback: bool = False
     output_root: str | None = None
     write_artifacts: bool = True
     strategy_name: str | None = None

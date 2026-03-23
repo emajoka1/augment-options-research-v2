@@ -49,6 +49,9 @@ async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None,
     elif snapshot_path:
         provider = SnapshotFileProvider(snapshot_path)
 
+    if provider is None and not ALLOW_DEMO_FALLBACK:
+        raise HTTPException(status_code=503, detail='live provider or snapshot required')
+
     snap = await provider.get_chain(symbol) if provider else demo_chain_snapshot(symbol)
     return {
         'symbol': symbol,
@@ -131,7 +134,12 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
 
 @app.get('/v1/vol-surface/{symbol}', response_model=VolSurfaceResponse)
 def vol_surface(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
-    snap = parse_chain_snapshot(snapshot_path) if snapshot_path else demo_chain_snapshot(symbol)
+    if snapshot_path:
+        snap = parse_chain_snapshot(snapshot_path)
+    else:
+        if not ALLOW_DEMO_FALLBACK:
+            raise HTTPException(status_code=503, detail='live provider or snapshot required')
+        snap = demo_chain_snapshot(symbol)
     fit = fit_surface_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs, expiries_days=snap.expiries_days)
     m = __import__('numpy').log(__import__('numpy').maximum(snap.strikes, 1e-12) / max(snap.spot, 1e-12))
     fitted_ivs = fit['iv_atm'] + fit['skew'] * m + fit['curv'] * (m ** 2)

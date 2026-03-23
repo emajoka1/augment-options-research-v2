@@ -67,6 +67,9 @@ def parse_args() -> MCEngineConfig:
     p.add_argument("--force-refresh", action="store_true")
     p.add_argument("--dq-fail-dedupe-cooldown-minutes", type=float, default=30.0)
     p.add_argument("--rv-freshness-sla-seconds", type=float, default=3600.0)
+    p.add_argument("--allow-local-rv-fallback", dest="allow_local_rv_fallback", action="store_true")
+    p.add_argument("--no-allow-local-rv-fallback", dest="allow_local_rv_fallback", action="store_false")
+    p.set_defaults(allow_local_rv_fallback=True)
     args = p.parse_args()
     return MCEngineConfig(
         spot=args.spot,
@@ -89,6 +92,7 @@ def parse_args() -> MCEngineConfig:
         force_refresh=args.force_refresh,
         dq_fail_dedupe_cooldown_minutes=args.dq_fail_dedupe_cooldown_minutes,
         rv_freshness_sla_seconds=args.rv_freshness_sla_seconds,
+        allow_local_rv_fallback=args.allow_local_rv_fallback,
         output_root=str(Path(".").resolve()),
         write_artifacts=True,
     )
