@@ -7,12 +7,13 @@ Current status:
 - optional local-dev auth bypass via `AUTH_OPTIONAL=true`
 - in-memory per-minute rate limiting (`100/min` free, `1000/min` pro)
 - forwards resolved user subject/tier headers upstream
-- Clerk webhook stub endpoint at `/api/webhooks/clerk`
+- Clerk webhook persists users to `users` table when `DATABASE_URL` is configured
 
 Env knobs:
 - `FASTAPI_BASE_URL`
 - `CORS_ORIGINS`
 - `CLERK_SECRET_KEY`
+- `DATABASE_URL`
 - `AUTH_OPTIONAL`
 - `RATE_LIMIT_FREE_PER_MIN`
 - `RATE_LIMIT_PRO_PER_MIN`

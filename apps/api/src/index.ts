@@ -1,6 +1,7 @@
 import { verifyToken } from '@clerk/backend'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { upsertUserFromClerk } from './db'
 
 const FASTAPI_BASE = process.env.FASTAPI_BASE_URL ?? 'http://localhost:8080'
 const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',').map((v) => v.trim())
@@ -99,10 +100,24 @@ app.post('/api/webhooks/clerk', async (c) => {
   const payload = await c.req.json().catch(() => ({}))
   const type = payload?.type ?? null
   const data = payload?.data ?? null
+
+  let persistence: { persisted: boolean; reason?: string } | null = null
+  if (type === 'user.created' && data?.id) {
+    const primaryEmail = Array.isArray(data?.email_addresses)
+      ? data.email_addresses.find((e: any) => e?.id === data?.primary_email_address_id)?.email_address ?? data.email_addresses[0]?.email_address
+      : null
+    persistence = await upsertUserFromClerk({
+      clerkId: data.id,
+      email: primaryEmail,
+      tier: 'free',
+    })
+  }
+
   return c.json({
     status: 'accepted',
     received: type,
     user_hint: data?.id ?? null,
+    persistence,
   }, 202)
 })
 
