@@ -91,9 +91,13 @@ def make_put_diagonal(long_strike: float, short_strike: float, front_expiry_year
     )
 
 
-def default_exit_rules_for_strategy(strategy_name: str) -> ExitRules:
+def default_exit_rules_for_strategy(strategy_name: str, expiry_days: float | None = None) -> ExitRules:
     if strategy_name in {"iron_fly", "iron_condor"}:
-        return ExitRules(take_profit_pct=0.50, stop_loss_pct=1.00, dte_stop_days=0.25, gamma_risk_dte_days=0.20, event_risk_exit=True)
+        if expiry_days is not None and expiry_days <= 7:
+            return ExitRules(take_profit_pct=0.50, stop_loss_pct=1.00, dte_stop_days=1.0, gamma_risk_dte_days=1.0, event_risk_exit=True)
+        if expiry_days is not None and expiry_days >= 30:
+            return ExitRules(take_profit_pct=0.50, stop_loss_pct=1.00, dte_stop_days=7.0, gamma_risk_dte_days=10.0, event_risk_exit=True)
+        return ExitRules(take_profit_pct=0.50, stop_loss_pct=1.00, dte_stop_days=2.0, gamma_risk_dte_days=2.0, event_risk_exit=True)
     if strategy_name in {"put_debit_spread", "long_straddle"}:
         return ExitRules(take_profit_pct=0.70, stop_loss_pct=0.50, dte_stop_days=0.10, gamma_risk_dte_days=0.10, event_risk_exit=False)
     if strategy_name in {"put_calendar", "put_diagonal"}:

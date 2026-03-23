@@ -14,7 +14,7 @@ from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 from ak_system.mc_options.iv_dynamics import fit_surface_from_snapshot
 from ak_system.mc_options.pricer import bs_greeks, bs_price
 from dataclasses import asdict
-from ak_system.mc_options.strategy import Leg, StrategyDef, compute_breakevens, max_profit_max_loss, strategy_mid_value
+from ak_system.mc_options.strategy import Leg, StrategyDef, compute_breakevens, default_exit_rules_for_strategy, max_profit_max_loss, strategy_mid_value
 from ak_system.brief.generator import BriefGenerator
 from ak_system.risk.estimator import estimate_structure_risk
 from src.api.job_models import JobAcceptedResponse, JobStatusResponse
@@ -99,12 +99,20 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
     breakevens, _, _ = compute_breakevens(strategy, abs(entry_value) or 1e-6)
     grid = __import__('numpy').linspace(req.spot * 0.8, req.spot * 1.2, 101)
     max_profit, max_loss = max_profit_max_loss(strategy, grid, req.r, req.q, iv_by_strike, entry_value)
+    strategy_name = 'custom' if len(req.legs) > 4 else ('long_straddle' if len(req.legs) == 2 and all(leg.side == 'long' for leg in req.legs) else 'iron_fly')
+    exit_rules = default_exit_rules_for_strategy(strategy_name, expiry_days=expiry_years * 365)
     return {
         'entry_value': entry_value,
         'breakevens': breakevens,
         'max_profit': max_profit,
         'max_loss': max_loss,
         'greeks_aggregate': {'delta': 0.0, 'gamma': 0.0, 'vega': 0.0, 'theta_daily': 0.0},
+        'exit_rules': {
+            'take_profit_pct': exit_rules.take_profit_pct,
+            'stop_loss_pct': exit_rules.stop_loss_pct,
+            'dte_stop_days': exit_rules.dte_stop_days,
+            'gamma_risk_dte_days': exit_rules.gamma_risk_dte_days,
+        },
     }
 
 

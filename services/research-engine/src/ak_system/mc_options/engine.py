@@ -339,7 +339,7 @@ class MCEngine:
 
         strategy = build_strategy(config.example, spot, expiry_years)
         config.strategy_name = strategy.name
-        exits = default_exit_rules_for_strategy(strategy.name)
+        exits = default_exit_rules_for_strategy(strategy.name, expiry_days=config.expiry_days)
         friction = FrictionConfig(spread_bps=config.spread_bps, slippage_bps=config.slippage_bps, partial_fill_prob=config.partial_fill_prob)
 
         snapshot_fp = _snapshot_fingerprint(config.snapshot_file)
