@@ -71,7 +71,9 @@ function pickContracts(chain, spotGuess) {
 }
 
 (async () => {
+  maybeRefreshQuoteToken();
   const qt = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8')).data;
+  validateQuoteToken(qt);
   const chain = JSON.parse(fs.readFileSync(CHAIN_PATH, 'utf8')).data.items[0];
 
   const contracts = pickContracts(chain, 680);

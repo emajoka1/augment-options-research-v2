@@ -41,3 +41,14 @@ The fetch script refuses tokens when:
 
 ## Then run the snapshot script
 Use your existing live snapshot flow after generating the token.
+
+## Auto-refresh mode
+`spy_live_snapshot.cjs` can now auto-refresh the quote token if it is missing or expired, provided these env vars are set:
+- `TT_CLIENT_ID`
+- `TT_CLIENT_SECRET`
+- `TT_REFRESH_TOKEN`
+
+Optional knobs:
+- `SPY_AUTO_REFRESH_TOKEN=1` (default on)
+- `SPY_FETCH_QUOTE_TOKEN_PYTHON`
+- `SPY_FETCH_QUOTE_TOKEN_SCRIPT`
