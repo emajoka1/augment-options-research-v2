@@ -192,10 +192,12 @@ def should_exit(
     is_short_premium: bool,
     event_risk_high: bool = False,
 ) -> bool:
-    if rules.take_profit_pct is not None and entry_debit_or_credit > 0 and current_pnl >= rules.take_profit_pct * abs(entry_debit_or_credit):
-        return True
-    if rules.stop_loss_pct is not None and entry_debit_or_credit > 0 and current_pnl <= -rules.stop_loss_pct * abs(entry_debit_or_credit):
-        return True
+    abs_entry = abs(entry_debit_or_credit)
+    if abs_entry > 1e-8:
+        if rules.take_profit_pct is not None and current_pnl >= rules.take_profit_pct * abs_entry:
+            return True
+        if rules.stop_loss_pct is not None and current_pnl <= -rules.stop_loss_pct * abs_entry:
+            return True
     if rules.dte_stop_days is not None and dte_days <= rules.dte_stop_days:
         return True
     if rules.iv_shift_stop is not None and abs(iv_shift) >= rules.iv_shift_stop:
