@@ -38,6 +38,16 @@ export RESEARCH_API_BASE=http://localhost:8000
 streamlit run app.py
 ```
 
+Or from the repo root, if your launcher expects the conventional filename there:
+
+```bash
+python3 -m venv apps/streamlit/.venv
+source apps/streamlit/.venv/bin/activate
+pip install -r apps/streamlit/requirements.txt
+export RESEARCH_API_BASE=http://localhost:8000
+streamlit run streamlit_app.py
+```
+
 ### Root helpers
 ```bash
 pnpm dev
