@@ -70,7 +70,14 @@ class FrictionConfig:
 
 
 def _exec_price(mid: float, side: str, friction: FrictionConfig, rng: np.random.Generator) -> float:
-    spread = max(friction.min_tick, mid * friction.spread_bps / 10000)
+    pct_spread = mid * friction.spread_bps / 10000
+    if mid <= 0.50:
+        tick_floor = friction.min_tick * 3.0
+    elif mid <= 1.00:
+        tick_floor = friction.min_tick * 2.0
+    else:
+        tick_floor = friction.min_tick
+    spread = max(friction.min_tick, tick_floor, pct_spread)
     slip = friction.slippage_bps / 10000 * max(mid, friction.min_tick)
     if rng.random() < friction.partial_fill_prob:
         slip *= 1.8
