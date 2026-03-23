@@ -72,7 +72,7 @@
     "max_weeks": 8,
     "requires_clean_live_logging": true,
     "lever": "asymmetry_tuning",
-    "target_avg_winner_r": [2.2, 2.5],
+    "target_avg_winner_r": [0.4, 0.6],
     "loss_r": 1.0
   }
 }
