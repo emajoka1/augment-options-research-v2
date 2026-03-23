@@ -29,14 +29,37 @@ class IVDynamicsParams:
     iv_cap: float = 2.00
 
 
-def fit_surface_from_snapshot(spot: float, strikes: np.ndarray, ivs: np.ndarray) -> dict:
-    m = np.log(np.maximum(strikes, 1e-12) / max(spot, 1e-12))
+def fit_surface_from_snapshot(
+    spot: float,
+    strikes: np.ndarray,
+    ivs: np.ndarray,
+    expiries_days: np.ndarray | None = None,
+    target_expiry_days: float | None = None,
+) -> dict:
+    fit_strikes = strikes
+    fit_ivs = ivs
+    slice_expiry_days = None
+
+    if expiries_days is not None and len(expiries_days) == len(ivs) and len(expiries_days) > 0:
+        unique_exp = np.unique(np.asarray(expiries_days, dtype=float))
+        target = float(target_expiry_days) if target_expiry_days is not None else float(np.min(unique_exp))
+        slice_expiry_days = float(unique_exp[np.argmin(np.abs(unique_exp - target))])
+        mask = np.isclose(expiries_days, slice_expiry_days)
+        if int(np.sum(mask)) >= 3:
+            fit_strikes = strikes[mask]
+            fit_ivs = ivs[mask]
+
+    m = np.log(np.maximum(fit_strikes, 1e-12) / max(spot, 1e-12))
     X = np.vstack([np.ones_like(m), m, m**2]).T
-    beta, *_ = np.linalg.lstsq(X, ivs, rcond=None)
+    beta, *_ = np.linalg.lstsq(X, fit_ivs, rcond=None)
+    beta[0] = max(0.03, float(beta[0]))
+    beta[2] = float(np.clip(beta[2], -2.0, 2.0))
     return {
         "iv_atm": float(beta[0]),
         "skew": float(beta[1]),
         "curv": float(beta[2]),
+        "slice_expiry_days": slice_expiry_days,
+        "slice_points": int(len(fit_ivs)),
     }
 
 

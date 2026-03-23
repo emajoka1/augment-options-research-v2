@@ -296,7 +296,10 @@ class MCEngine:
 
         if config.snapshot_file:
             snap = parse_chain_snapshot(config.snapshot_file)
-            cal = calibrate_from_snapshot(snap, dt=dt)
+            try:
+                cal = calibrate_from_snapshot(snap, dt=dt, target_expiry_days=config.expiry_days)
+            except TypeError:
+                cal = calibrate_from_snapshot(snap, dt=dt)
             spot, rv10, rv20, jump_used = float(snap.spot), cal.rv10, cal.rv20, cal.jump
             rv_source = "snapshot_primary" if (rv10 is not None and rv20 is not None) else None
             rv_window_bars = int(len(snap.returns)) if snap.returns is not None else None

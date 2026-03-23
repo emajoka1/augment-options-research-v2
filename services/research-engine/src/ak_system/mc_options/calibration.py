@@ -47,8 +47,20 @@ def defaults_from_market(
     return gbm, jd, heston, iv
 
 
-def fit_iv_params_from_snapshot(spot: float, strikes: np.ndarray, ivs: np.ndarray, expiries_days: np.ndarray | None = None) -> IVDynamicsParams:
-    fit = fit_surface_from_snapshot(spot=spot, strikes=strikes, ivs=ivs)
+def fit_iv_params_from_snapshot(
+    spot: float,
+    strikes: np.ndarray,
+    ivs: np.ndarray,
+    expiries_days: np.ndarray | None = None,
+    target_expiry_days: float | None = None,
+) -> IVDynamicsParams:
+    fit = fit_surface_from_snapshot(
+        spot=spot,
+        strikes=strikes,
+        ivs=ivs,
+        expiries_days=expiries_days,
+        target_expiry_days=target_expiry_days,
+    )
     iv = IVDynamicsParams(iv_atm=fit["iv_atm"], skew=fit["skew"], curv=fit["curv"], theta_iv=fit["iv_atm"])
 
     if expiries_days is not None and len(expiries_days) == len(ivs) and len(expiries_days) > 3:
@@ -85,8 +97,8 @@ def realized_vol(returns: np.ndarray, window: int, dt: float = 1 / 252) -> float
     return float(np.std(x) / np.sqrt(max(dt, 1e-10)))
 
 
-def calibrate_from_snapshot(snapshot: ChainSnapshot, dt: float = 1 / 252) -> CalibratedPack:
-    iv = fit_iv_params_from_snapshot(snapshot.spot, snapshot.strikes, snapshot.ivs, snapshot.expiries_days)
+def calibrate_from_snapshot(snapshot: ChainSnapshot, dt: float = 1 / 252, target_expiry_days: float | None = None) -> CalibratedPack:
+    iv = fit_iv_params_from_snapshot(snapshot.spot, snapshot.strikes, snapshot.ivs, snapshot.expiries_days, target_expiry_days=target_expiry_days)
     gbm, jd_default, heston, _ = defaults_from_market(snapshot.spot, iv_atm=iv.iv_atm)
 
     rets = snapshot.returns if snapshot.returns is not None else np.array([])

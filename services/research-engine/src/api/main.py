@@ -111,7 +111,7 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
 @app.get('/v1/vol-surface/{symbol}', response_model=VolSurfaceResponse)
 def vol_surface(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
     snap = parse_chain_snapshot(snapshot_path) if snapshot_path else demo_chain_snapshot(symbol)
-    fit = fit_surface_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs)
+    fit = fit_surface_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs, expiries_days=snap.expiries_days)
     m = __import__('numpy').log(__import__('numpy').maximum(snap.strikes, 1e-12) / max(snap.spot, 1e-12))
     fitted_ivs = fit['iv_atm'] + fit['skew'] * m + fit['curv'] * (m ** 2)
     return {
