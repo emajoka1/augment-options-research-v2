@@ -49,7 +49,7 @@ def parse_args() -> MCEngineConfig:
     p = argparse.ArgumentParser(description="Real options Monte Carlo engine")
     p.add_argument("--spot", type=float, default=690.0)
     p.add_argument("--r", type=float, default=0.03)
-    p.add_argument("--q", type=float, default=0.0)
+    p.add_argument("--q", type=float, default=0.013)
     p.add_argument("--expiry-days", type=float, default=5)
     p.add_argument("--n-paths", type=int, default=5000)
     p.add_argument("--n-batches", type=int, default=20)

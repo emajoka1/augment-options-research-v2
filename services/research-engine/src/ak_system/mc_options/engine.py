@@ -38,7 +38,7 @@ class MCEngineConfig:
     symbol: str = "SPY"
     spot: float = 690.0
     r: float = 0.03
-    q: float = 0.0
+    q: float = 0.013
     expiry_days: float = 5
     n_paths: int = 5000
     n_batches: int = 20

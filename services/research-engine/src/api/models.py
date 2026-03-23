@@ -44,7 +44,7 @@ class StrategyAnalyzeRequest(BaseModel):
     legs: list[StrategyLegRequest]
     spot: float
     r: float = 0.03
-    q: float = 0.0
+    q: float = 0.013
 
 
 class StrategyAnalyzeResponse(BaseModel):
