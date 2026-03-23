@@ -24,6 +24,9 @@ LIVE_PATH = os.environ.get("SPY_LIVE_PATH", os.path.expanduser("~/lab/data/tasty
 LIVE_MAX_AGE_MINUTES = int(os.environ.get("SPY_LIVE_MAX_AGE_MINUTES", "5"))
 TRIGGER_LIVE_REFRESH = os.environ.get("SPY_TRIGGER_LIVE_REFRESH", "1").lower() in {"1", "true", "yes"}
 LIVE_SNAPSHOT_SCRIPT = os.environ.get("SPY_LIVE_SCRIPT", str(ROOT / "scripts" / "spy_live_snapshot.cjs"))
+DXLINK_CANDLES_SCRIPT = os.environ.get("DXLINK_CANDLES_SCRIPT", str(ROOT / "scripts" / "dxlink_candles.cjs"))
+DXLINK_CANDLE_OUT = os.environ.get("DXLINK_CANDLE_OUT", os.path.expanduser("~/lab/data/tastytrade/dxlink_candles.json"))
+DXLINK_CANDLE_SYMBOL = os.environ.get("DXLINK_CANDLE_SYMBOL", "SPY{=5m}")
 
 MIN_OI = int(os.environ.get("SPY_MIN_OI", "1000"))
 MIN_VOL = int(os.environ.get("SPY_MIN_VOL", "100"))
@@ -100,6 +103,43 @@ def refresh_live_snapshot_if_needed(path: str = LIVE_PATH, max_age_minutes: int 
     except Exception:
         return load_live(path)
     return load_live(path)
+
+
+def refresh_dxlink_returns_fallback() -> tuple[list[float] | None, str | None]:
+    try:
+        subprocess.run(
+            ["node", DXLINK_CANDLES_SCRIPT],
+            check=True,
+            cwd=str(ROOT),
+            env={**os.environ, "DXLINK_CANDLE_SYMBOL": DXLINK_CANDLE_SYMBOL, "DXLINK_CANDLE_OUT": DXLINK_CANDLE_OUT},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except Exception:
+        return None, None
+
+    try:
+        with open(DXLINK_CANDLE_OUT) as f:
+            data = json.load(f)
+        candles = data.get("candles") or []
+        closes = [float(c.get("close")) for c in candles if c.get("close") not in (None, "")]
+        if len(closes) < 21:
+            return None, None
+        rets = []
+        for a, b in zip(closes[:-1], closes[1:]):
+            if a and b and a > 0 and b > 0:
+                rets.append(math.log(b / a))
+        if len(rets) < 20:
+            return None, None
+        snapshots_dir = ROOT.parent.parent / "agent" / "snapshots"
+        snapshots_dir.mkdir(parents=True, exist_ok=True)
+        out = snapshots_dir / f"spy_mc_snapshot_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+        payload = {"source": "dxlink_candles", "symbol": DXLINK_CANDLE_SYMBOL, "returns": rets}
+        out.write_text(json.dumps(payload), encoding="utf-8")
+        return rets, str(out)
+    except Exception:
+        return None, None
 
 
 def get_spot_from_dx(path: str, max_age_minutes: int = 5):
@@ -835,6 +875,7 @@ def attach_mc_decision(candidate, legs, spot):
 
     dte = min((l.get("dte") or 999) for l in legs if l is not None)
     strategy_type = {"debit": "call_debit_spread", "credit": "put_credit_spread", "condor": "iron_condor"}[candidate["type"]]
+    _, rv_path = refresh_dxlink_returns_fallback()
     mc_result = MCEngine().run(
         MCEngineConfig(
             symbol="SPY",
@@ -846,6 +887,8 @@ def attach_mc_decision(candidate, legs, spot):
             strategy_type=strategy_type,
             strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
             write_artifacts=False,
+            output_root=str(ROOT),
+            allow_local_rv_fallback=True,
         )
     )
 

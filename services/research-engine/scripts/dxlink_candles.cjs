@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { DXLinkWebSocketClient, DXLinkFeed, FeedDataFormat } = require('@dxfeed/dxlink-api');
+const { DXLinkWebSocketClient, DXLinkFeed, FeedDataFormat } = require(process.env.DXLINK_API_MODULE || '/Users/forge/lab/tastytrade/node_modules/@dxfeed/dxlink-api');
 
 const TOKEN_PATH = process.env.SPY_TOKEN_PATH || path.join(os.homedir(), 'lab/data/tastytrade/api_quote_token.json');
 const OUT_PATH = process.env.DXLINK_CANDLE_OUT || path.join(os.homedir(), 'lab/data/tastytrade/dxlink_candles.json');
