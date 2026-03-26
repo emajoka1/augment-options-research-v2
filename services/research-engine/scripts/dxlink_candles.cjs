@@ -76,7 +76,7 @@ function validateQuoteToken(qt) {
   await client.connect(qt['dxlink-url']);
 
   const feed = new DXLinkFeed(client, 'AUTO');
-  feed.configure({ acceptDataFormat: FeedDataFormat.FULL });
+  feed.configure({ acceptDataFormat: FeedDataFormat.COMPACT });
 
   feed.addSubscriptions({ type: 'Candle', symbol: SYMBOL, fromTime: FROM_TIME });
 

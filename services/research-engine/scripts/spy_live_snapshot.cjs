@@ -17,6 +17,12 @@ const CONNECT_RETRIES = Number(process.env.SPY_CONNECT_RETRIES || 3);
 const CONNECT_BACKOFF_MS = Number(process.env.SPY_CONNECT_BACKOFF_MS || 1500);
 const MIN_SYMBOLS_WITH_DATA = Number(process.env.SPY_MIN_SYMBOLS_WITH_DATA || 5);
 const REQUIRE_UNDERLYING_QUOTE = String(process.env.SPY_REQUIRE_UNDERLYING_QUOTE || '1') !== '0';
+const MAX_EXPIRIES = Number(process.env.SPY_MAX_EXPIRIES || 4);
+const STRIKE_OFFSETS = String(process.env.SPY_STRIKE_OFFSETS || '-40,-30,-25,-20,-15,-10,-5,0,5,10,15,20,25,30,40')
+  .split(',')
+  .map((v) => Number(v.trim()))
+  .filter(Number.isFinite);
+const MAX_CONTRACTS = Number(process.env.SPY_MAX_CONTRACTS || 120);
 
 function maybeRefreshQuoteToken() {
  if (!AUTO_REFRESH) return;
@@ -110,9 +116,11 @@ async function withRetries(label, fn) {
 }
 
 function pickContracts(chain, spotGuess) {
-  const exp = [...(chain.expirations || [])].sort((a,b)=> (a['days-to-expiration']??9999) - (b['days-to-expiration']??9999)).slice(0,2);
+  const exp = [...(chain.expirations || [])]
+    .sort((a,b)=> (a['days-to-expiration']??9999) - (b['days-to-expiration']??9999))
+    .slice(0, MAX_EXPIRIES);
   const center = round5(spotGuess || 600);
-  const picks = [center - 25, center - 20, center - 15, center - 10, center - 5, center, center + 5, center + 10, center + 15, center + 20, center + 25];
+  const picks = STRIKE_OFFSETS.map((off) => center + off);
   const out = [];
   for (const e of exp) {
     const byStrike = new Map((e.strikes||[]).map(s => [Number(s['strike-price']), s]));
@@ -123,7 +131,7 @@ function pickContracts(chain, spotGuess) {
       if (row['put-streamer-symbol']) out.push({expiry:e['expiration-date'], dte:e['days-to-expiration'], strike:st, side:'P', symbol:row['put-streamer-symbol']});
     }
   }
-  return out.slice(0, 44);
+  return out.slice(0, MAX_CONTRACTS);
 }
 
 (async () => {
@@ -145,13 +153,14 @@ function pickContracts(chain, spotGuess) {
   const contracts = pickContracts(chain, spotGuess || chainSpotHint || 600);
   const symbols = contracts.map(c => c.symbol);
 
+  const underlyingStreamerSymbol = chain?.underlying?.['streamer-symbol'] || 'SPY';
   const snapshotId = `snapshot_${Date.now()}_${crypto.randomUUID().slice(0,8)}`;
   const out = {
     snapshotId,
     startedAt: new Date().toISOString(),
     source: 'dxlink-live',
     level: qt.level,
-    underlying: { symbol: 'SPY' },
+    underlying: { symbol: 'SPY', streamerSymbol: underlyingStreamerSymbol },
     contracts,
     data: {},
   };
@@ -161,10 +170,10 @@ function pickContracts(chain, spotGuess) {
   await withRetries('connect', () => client.connect(qt['dxlink-url']));
 
   const feed = new DXLinkFeed(client, 'AUTO');
-  feed.configure({ acceptDataFormat: FeedDataFormat.FULL });
+  feed.configure({ acceptDataFormat: FeedDataFormat.COMPACT });
 
   await withRetries('subscription', async () => {
-    feed.addSubscriptions({ type: 'Quote', symbol: 'SPY' });
+    feed.addSubscriptions({ type: 'Quote', symbol: underlyingStreamerSymbol });
     for (const s of symbols) {
       for (const t of ['Quote', 'Greeks', 'Trade', 'Summary']) feed.addSubscriptions({ type: t, symbol: s });
     }
@@ -172,7 +181,7 @@ function pickContracts(chain, spotGuess) {
 
   feed.addEventListener((events) => {
     for (const e of events) {
-      if (e.eventSymbol === 'SPY' && e.eventType === 'Quote') {
+      if (e.eventSymbol === underlyingStreamerSymbol && e.eventType === 'Quote') {
         out.underlying.bid = e.bidPrice;
         out.underlying.ask = e.askPrice;
         if (Number.isFinite(e.bidPrice) && Number.isFinite(e.askPrice)) out.underlying.mark = (e.bidPrice + e.askPrice)/2;
