@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 import os
 from pathlib import Path
-import subprocess
 from typing import Literal
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, HTTPException
 import numpy as np
 from ak_system import __version__
-from ak_system.adapters.data_provider import PolygonProvider, SnapshotFileProvider
-from src.api.fallbacks import demo_chain_snapshot
-from ak_system.mc_options.calibration import ChainSnapshot, parse_chain_snapshot
+from ak_system.live_paths import DXLINK_LIVE_PATHS, load_json_file
+from ak_system.mc_options.calibration import ChainSnapshot
 from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 from ak_system.mc_options.iv_dynamics import fit_surface_from_snapshot
 from ak_system.mc_options.pricer import bs_greeks, bs_price
@@ -35,12 +32,31 @@ from src.api.models import (
 )
 
 app = FastAPI(title='Research Engine API', version=__version__)
-ALLOW_DEMO_FALLBACK = os.environ.get('ALLOW_DEMO_FALLBACK', '0').lower() in {'1', 'true', 'yes'}
-LOCAL_SPY_LIVE_SNAPSHOT = Path(os.environ.get('SPY_LIVE_OUT', str(Path.home() / 'lab/data/tastytrade/spy_live_snapshot.json')))
-LOCAL_SPY_LIVE_SCRIPT = Path(os.environ.get('SPY_LIVE_SCRIPT', str(Path(__file__).resolve().parents[2] / 'scripts' / 'spy_live_snapshot.cjs')))
+LOCAL_SPY_LIVE_SNAPSHOT = DXLINK_LIVE_PATHS.snapshot
+LOCAL_SPY_LIVE_STATUS = DXLINK_LIVE_PATHS.status
 LOCAL_SPY_LIVE_MAX_AGE_SECONDS = int(os.environ.get('SPY_LIVE_MAX_AGE_SECONDS', '300'))
-TRIGGER_LOCAL_SPY_LIVE = os.environ.get('SPY_TRIGGER_LIVE_FROM_API', '1').lower() in {'1', 'true', 'yes'}
+TRIGGER_LOCAL_SPY_LIVE = os.environ.get('SPY_TRIGGER_LIVE_FROM_API', '0').lower() in {'1', 'true', 'yes'}
 MIN_LIVE_CHAIN_POINTS = int(os.environ.get('SPY_MIN_LIVE_CHAIN_POINTS', '8'))
+
+
+def _load_live_status() -> dict | None:
+    return load_json_file(LOCAL_SPY_LIVE_STATUS)
+
+
+
+def _assert_daemon_healthy() -> dict:
+    status = _load_live_status()
+    if not status:
+        raise HTTPException(status_code=503, detail='dxlink daemon status unavailable')
+    health = status.get('health') or {}
+    if not bool(health.get('ok')) or bool(health.get('stale')):
+        raise HTTPException(status_code=503, detail={
+            'message': 'dxlink daemon unhealthy',
+            'health': health,
+            'statusPath': str(LOCAL_SPY_LIVE_STATUS),
+        })
+    return status
+
 
 
 def _snapshot_is_fresh(path: Path, max_age_seconds: int) -> bool:
@@ -57,16 +73,8 @@ def _snapshot_is_fresh(path: Path, max_age_seconds: int) -> bool:
 def _trigger_spy_live_snapshot() -> None:
     if not TRIGGER_LOCAL_SPY_LIVE:
         return
-    if not LOCAL_SPY_LIVE_SCRIPT.exists():
-        raise FileNotFoundError(f'live snapshot script not found: {LOCAL_SPY_LIVE_SCRIPT}')
-    subprocess.run(
-        ['node', str(LOCAL_SPY_LIVE_SCRIPT)],
-        check=True,
-        cwd=str(LOCAL_SPY_LIVE_SCRIPT.parent.parent),
-        env=os.environ.copy(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    raise RuntimeError(
+        'dxlink daemon output is the canonical live source; start scripts/dxlink_stream_daemon.cjs or set SPY_TRIGGER_LIVE_FROM_API=0'
     )
 
 
@@ -77,7 +85,9 @@ def _load_local_spy_live_snapshot() -> ChainSnapshot | None:
     if not LOCAL_SPY_LIVE_SNAPSHOT.exists():
         return None
 
-    payload = json.loads(LOCAL_SPY_LIVE_SNAPSHOT.read_text(encoding='utf-8'))
+    payload = load_json_file(LOCAL_SPY_LIVE_SNAPSHOT)
+    if not payload:
+        return None
     contracts = payload.get('contracts') or []
     data = payload.get('data') or {}
     underlying = payload.get('underlying') or {}
@@ -122,23 +132,13 @@ def _load_local_spy_live_snapshot() -> ChainSnapshot | None:
 
 
 
-async def _resolve_chain_snapshot(symbol: str, snapshot_path: str | None) -> tuple[ChainSnapshot, str]:
-    if os.environ.get('POLYGON_API_KEY'):
-        provider = PolygonProvider(os.environ['POLYGON_API_KEY'])
-        return await provider.get_chain(symbol), 'polygon'
-
-    if snapshot_path:
-        return parse_chain_snapshot(snapshot_path), 'snapshot_file'
-
+async def _resolve_chain_snapshot(symbol: str) -> tuple[ChainSnapshot, str]:
     if symbol.upper() == 'SPY':
         live_snapshot = _load_local_spy_live_snapshot()
         if live_snapshot is not None:
             return live_snapshot, 'dxlink_live_snapshot'
 
-    if ALLOW_DEMO_FALLBACK:
-        return demo_chain_snapshot(symbol), 'builtin_demo'
-
-    raise HTTPException(status_code=503, detail='live provider or snapshot required')
+    raise HTTPException(status_code=503, detail='dxlink live snapshot required — no fallback sources available')
 
 
 @app.get('/v1/health', response_model=HealthResponse)
@@ -146,9 +146,18 @@ def health():
     return {'status': 'ok', 'version': __version__, 'timestamp': datetime.now(timezone.utc).isoformat()}
 
 
+@app.get('/v1/live-status')
+def live_status():
+    status = _load_live_status()
+    if not status:
+        raise HTTPException(status_code=503, detail='dxlink daemon status unavailable')
+    return status
+
+
 @app.get('/v1/chain/{symbol}', response_model=ChainResponse)
-async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
-    snap, source = await _resolve_chain_snapshot(symbol, snapshot_path)
+async def get_chain(symbol: str):
+    _assert_daemon_healthy()
+    snap, source = await _resolve_chain_snapshot(symbol)
     return {
         'symbol': symbol,
         'spot': snap.spot,
@@ -157,7 +166,6 @@ async def get_chain(symbol: str, snapshot_path: str | None = Query(default=None,
         'expiry_days': snap.expiries_days.tolist() if snap.expiries_days is not None else None,
         'returns': snap.returns.tolist() if snap.returns is not None else None,
         'source': source,
-        'todo': 'Replace with Polygon.io live fetch in Task 0.5.' if source == 'builtin_demo' else None,
     }
 
 
@@ -229,8 +237,9 @@ def analyze_strategy(req: StrategyAnalyzeRequest):
 
 
 @app.get('/v1/vol-surface/{symbol}', response_model=VolSurfaceResponse)
-async def vol_surface(symbol: str, snapshot_path: str | None = Query(default=None, description='Local snapshot path')):
-    snap, _ = await _resolve_chain_snapshot(symbol, snapshot_path)
+async def vol_surface(symbol: str):
+    _assert_daemon_healthy()
+    snap, _ = await _resolve_chain_snapshot(symbol)
     fit = fit_surface_from_snapshot(spot=snap.spot, strikes=snap.strikes, ivs=snap.ivs, expiries_days=snap.expiries_days)
     m = __import__('numpy').log(__import__('numpy').maximum(snap.strikes, 1e-12) / max(snap.spot, 1e-12))
     fitted_ivs = fit['iv_atm'] + fit['skew'] * m + fit['curv'] * (m ** 2)
@@ -252,6 +261,8 @@ def risk_estimate(structure_type: str, risk_cap: float, debit: float = 0.0, cred
 
 @app.post('/v1/brief/{symbol}', response_model=BriefResponse)
 def generate_brief(symbol: str):
+    if symbol.upper() == 'SPY':
+        _assert_daemon_healthy()
     try:
         result = BriefGenerator().generate(symbol)
     except NotImplementedError as exc:

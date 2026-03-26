@@ -45,6 +45,7 @@ def ensure_state() -> None:
         'q': DEFAULT_Q,
         'legs_text': json.dumps(DEFAULT_LEGS, indent=2),
         'last_health': None,
+        'last_live_status': None,
         'last_chain': None,
         'last_brief': None,
         'last_surface': None,
@@ -91,6 +92,11 @@ def cached_health(base: str) -> tuple[int, Any]:
     return api_get(base, '/v1/health')
 
 
+@st.cache_data(ttl=10, show_spinner=False)
+def cached_live_status(base: str) -> tuple[int, Any]:
+    return api_get(base, '/v1/live-status')
+
+
 @st.cache_data(ttl=15, show_spinner=False)
 def cached_chain(base: str, symbol: str, snapshot_path: str) -> tuple[int, Any]:
     params = {'snapshot_path': snapshot_path} if snapshot_path else None
@@ -134,16 +140,41 @@ with st.sidebar:
     st.markdown('---')
     if st.button('Check health', use_container_width=True):
         st.session_state['last_health'] = cached_health(api_base)
+        st.session_state['last_live_status'] = cached_live_status(api_base)
     if st.button('Clear cached responses', use_container_width=True):
         cached_health.clear()
+        cached_live_status.clear()
         cached_chain.clear()
         cached_surface.clear()
         st.session_state['last_health'] = None
+        st.session_state['last_live_status'] = None
         st.session_state['last_chain'] = None
         st.session_state['last_brief'] = None
         st.session_state['last_surface'] = None
         st.session_state['last_strategy'] = None
         st.success('Cleared cached GET responses and last displayed results.')
+
+if st.session_state.get('last_live_status') is None:
+    st.session_state['last_live_status'] = cached_live_status(api_base)
+
+live_status_result = st.session_state.get('last_live_status')
+if live_status_result:
+    live_code, live_payload = live_status_result
+    if live_code == 200 and isinstance(live_payload, dict):
+        health = live_payload.get('health') or {}
+        status_cols = st.columns(4)
+        status_cols[0].metric('Daemon health', 'OK' if health.get('ok') and not health.get('stale') else 'DEGRADED')
+        status_cols[1].metric('Connection', live_payload.get('connectionState', '—'))
+        status_cols[2].metric('Auth', live_payload.get('authState', '—'))
+        status_cols[3].metric('Last update', live_payload.get('generatedAt', '—'))
+        if health.get('ok') and not health.get('stale'):
+            st.success(f"DXLink daemon healthy — active candle symbol: {live_payload.get('activeCandleSymbol', '—')}")
+        else:
+            st.warning(f"DXLink daemon degraded: {health}")
+        with st.expander('Live daemon status'):
+            st.json(live_payload)
+    else:
+        st.warning(f'DXLink daemon status unavailable: {live_payload}')
 
 health = st.session_state.get('last_health')
 if health:
