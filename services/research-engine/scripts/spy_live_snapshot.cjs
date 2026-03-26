@@ -23,6 +23,7 @@ const STRIKE_OFFSETS = String(process.env.SPY_STRIKE_OFFSETS || '-40,-30,-25,-20
   .map((v) => Number(v.trim()))
   .filter(Number.isFinite);
 const MAX_CONTRACTS = Number(process.env.SPY_MAX_CONTRACTS || 120);
+const AGGREGATION_PERIOD = Number(process.env.SPY_ACCEPT_AGGREGATION_PERIOD || 0.1);
 
 function maybeRefreshQuoteToken() {
  if (!AUTO_REFRESH) return;
@@ -170,7 +171,16 @@ function pickContracts(chain, spotGuess) {
   await withRetries('connect', () => client.connect(qt['dxlink-url']));
 
   const feed = new DXLinkFeed(client, 'AUTO');
-  feed.configure({ acceptDataFormat: FeedDataFormat.COMPACT });
+  feed.configure({
+    acceptAggregationPeriod: AGGREGATION_PERIOD,
+    acceptDataFormat: FeedDataFormat.COMPACT,
+    acceptEventFields: {
+      Trade: ['eventType', 'eventSymbol', 'price', 'dayVolume', 'size'],
+      Quote: ['eventType', 'eventSymbol', 'bidPrice', 'askPrice', 'bidSize', 'askSize'],
+      Greeks: ['eventType', 'eventSymbol', 'volatility', 'delta', 'gamma', 'theta', 'rho', 'vega'],
+      Summary: ['eventType', 'eventSymbol', 'openInterest', 'dayOpenPrice', 'dayHighPrice', 'dayLowPrice', 'prevDayClosePrice'],
+    },
+  });
 
   await withRetries('subscription', async () => {
     feed.addSubscriptions({ type: 'Quote', symbol: underlyingStreamerSymbol });

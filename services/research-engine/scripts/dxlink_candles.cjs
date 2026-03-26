@@ -13,6 +13,7 @@ const WAIT_MS = Number(process.env.DXLINK_CANDLE_WAIT_MS || 8000);
 const SYMBOL = String(process.env.DXLINK_CANDLE_SYMBOL || 'SPY{=5m}');
 const FROM_TIME = Number(process.env.DXLINK_CANDLE_FROM_TIME || (Date.now() - 24 * 60 * 60 * 1000));
 const PYTHON = process.env.SPY_FETCH_QUOTE_TOKEN_PYTHON || path.join(__dirname, '..', '.venv', 'bin', 'python');
+const AGGREGATION_PERIOD = Number(process.env.DXLINK_ACCEPT_AGGREGATION_PERIOD || 0.1);
 
 function fail(msg, details = {}) {
   console.error(JSON.stringify({ ok: false, error: msg, ...details }, null, 2));
@@ -76,7 +77,13 @@ function validateQuoteToken(qt) {
   await client.connect(qt['dxlink-url']);
 
   const feed = new DXLinkFeed(client, 'AUTO');
-  feed.configure({ acceptDataFormat: FeedDataFormat.COMPACT });
+  feed.configure({
+    acceptAggregationPeriod: AGGREGATION_PERIOD,
+    acceptDataFormat: FeedDataFormat.COMPACT,
+    acceptEventFields: {
+      Candle: ['eventType', 'eventSymbol', 'time', 'open', 'high', 'low', 'close', 'volume'],
+    },
+  });
 
   feed.addSubscriptions({ type: 'Candle', symbol: SYMBOL, fromTime: FROM_TIME });
 
