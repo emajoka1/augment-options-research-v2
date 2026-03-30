@@ -806,6 +806,57 @@ def evaluate_portfolio_context(new_trade, existing_positions, portfolio_value):
     }
 
 
+def build_recommendation(analyses, context, mandatory_missing, no_candidates_reason):
+    data_quality = (context.get('dataQuality') or {}).get('regime') or {}
+    dq_available = data_quality.get('availableInputs', 0)
+    dq_total = data_quality.get('totalInputs', 0)
+    dq_issue = bool(mandatory_missing) or (dq_total > 0 and dq_available < dq_total)
+
+    reasons = []
+    if dq_total:
+        reasons.append(f"Data quality: {dq_total - dq_available} of {dq_total} regime inputs missing")
+
+    all_gate_failures = [g for a in analyses for g in (a.get('gateFailures') or [])]
+    if any(g in {'spread_bps_exceeded', 'liquidity_poor', 'execution_poor'} for g in all_gate_failures):
+        reasons.append('Execution: liquidity/execution metrics rejected at least one candidate')
+    if any(str(g).startswith('mc:') for g in all_gate_failures):
+        reasons.append('Monte Carlo: one or more MC gates failed across candidates')
+    if no_candidates_reason and no_candidates_reason not in reasons:
+        reasons.append(no_candidates_reason)
+
+    if dq_issue:
+        return {
+            'signal': 'DATA_ERROR',
+            'color': 'gray',
+            'headline': 'System inputs incomplete — recommendation is not reliable',
+            'reasons': reasons or ['Data quality problems prevent a reliable recommendation'],
+        }
+
+    trade_candidates = [a for a in analyses if a.get('decision') == 'TRADE']
+    if not trade_candidates:
+        return {
+            'signal': 'NO_TRADE',
+            'color': 'red',
+            'headline': 'All candidates rejected — do not trade',
+            'reasons': reasons or ['No candidate passed the current gates'],
+        }
+
+    best = trade_candidates[0]
+    best_score = ((best.get('score') or {}).get('Total') or 0)
+    if best_score >= 85:
+        signal, color, headline = 'STRONG_BUY', 'green', 'Best candidate passed with strong supporting evidence'
+    elif best_score >= 70:
+        signal, color, headline = 'BUY', 'light_green', 'Best candidate passed the current gates'
+    else:
+        signal, color, headline = 'NEUTRAL', 'amber', 'Trade candidate exists, but edge is only moderate'
+    return {
+        'signal': signal,
+        'color': color,
+        'headline': headline,
+        'reasons': reasons,
+    }
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -1985,6 +2036,8 @@ def generate_brief_payload():
         elif all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
             no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
 
+    recommendation = build_recommendation(analyses, context, mandatory_missing, no_candidates_reason)
+
     output = {
         "brief_meta": {
             "brief_id": brief_id,
@@ -2009,6 +2062,7 @@ def generate_brief_payload():
             "Volatility State": vol,
             "Candidates": analyses,
             "ClosestNearMiss": closest_near_miss,
+            "Recommendation": recommendation,
             "Final Decision": final_decision,
             "NoCandidatesReason": no_candidates_reason,
             "DefaultBias": "NO TRADE", 

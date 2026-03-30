@@ -490,6 +490,22 @@ def test_portfolio_context_fallback_warning_when_unavailable():
     assert data is None
 
 
+def test_build_recommendation_prefers_data_error_when_inputs_incomplete():
+    context = {'dataQuality': {'regime': {'availableInputs': 1, 'totalInputs': 3}}}
+    analyses = [{'decision': 'PASS', 'gateFailures': ['mc:ev_gate']}]
+    out = sfb.build_recommendation(analyses, context, ['realized_vol'], None)
+    assert out['signal'] == 'DATA_ERROR'
+    assert out['color'] == 'gray'
+
+
+def test_build_recommendation_no_trade_when_all_candidates_rejected_without_data_error():
+    context = {'dataQuality': {'regime': {'availableInputs': 3, 'totalInputs': 3}}}
+    analyses = [{'decision': 'PASS', 'gateFailures': ['mc:ev_gate']}]
+    out = sfb.build_recommendation(analyses, context, [], None)
+    assert out['signal'] == 'NO_TRADE'
+    assert out['color'] == 'red'
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
