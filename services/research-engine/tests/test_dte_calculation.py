@@ -327,6 +327,22 @@ def test_compute_final_score_treats_directional_mismatch_as_critical():
     assert out['adjustedTotal'] == 60
 
 
+def test_candidate_hard_pass_reasons_block_trade_on_user_safety_rules():
+    candidate = {
+        'ticket': {'positionSizeContracts': 0},
+        'score': {'AdjustedTotal': 50},
+        'gateFailures': ['score_below_70', 'directional_mismatch'],
+        'mc': {'dataQualityStatus': 'DEGRADED'},
+    }
+    reasons = sfb.candidate_hard_pass_reasons(candidate)
+    assert set(reasons) == {
+        'position_size_zero',
+        'score_below_trade_threshold',
+        'data_quality_blocks_trade',
+        'directional_mismatch_blocks_trade',
+    }
+
+
 def test_set_trade_target_condor_one_dte_uses_80pct_profit_target():
     target, pct = sfb.set_trade_target('condor', 1.18, None, 1.18, 1)
     assert target == 0.24

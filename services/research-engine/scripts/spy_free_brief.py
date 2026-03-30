@@ -835,6 +835,29 @@ def extract_confidence_intervals(multi_seed_confidence):
     }
 
 
+def candidate_hard_pass_reasons(candidate, recommendation_signal=None, data_quality_status=None):
+    reasons = []
+    ticket = candidate.get('ticket') or {}
+    contracts = ticket.get('positionSizeContracts')
+    adjusted_total = ((candidate.get('score') or {}).get('AdjustedTotal'))
+    gate_failures = set(candidate.get('gateFailures') or [])
+    recommendation_signal = recommendation_signal or ((candidate.get('recommendation') or {}).get('signal'))
+    data_quality_status = data_quality_status or ((candidate.get('mc') or {}).get('dataQualityStatus'))
+
+    if contracts is not None and contracts <= 0:
+        reasons.append('position_size_zero')
+    if adjusted_total is not None and adjusted_total < 70:
+        reasons.append('score_below_trade_threshold')
+    if recommendation_signal in {'DATA_ERROR'}:
+        reasons.append('recommendation_blocks_trade')
+    if data_quality_status in {'DEGRADED', 'ERROR', 'BLOCKED_INVALID_INPUTS'}:
+        reasons.append('data_quality_blocks_trade')
+    if 'directional_mismatch' in gate_failures:
+        reasons.append('directional_mismatch_blocks_trade')
+
+    return reasons
+
+
 def build_recommendation(analyses, context, mandatory_missing, no_candidates_reason):
     data_quality = (context.get('dataQuality') or {}).get('regime') or {}
     dq_available = data_quality.get('availableInputs', 0)
@@ -2046,7 +2069,6 @@ def attach_mc_decision(candidate, legs, spot):
     failed_mc_gates = sorted([f"mc:{k}" for k, v in mc_gates.items() if k != "allow_trade" and v is False])
     existing = [g for g in (candidate.get("gateFailures") or []) if not g.startswith("mc:")]
     candidate["gateFailures"] = existing if mc_result.allow_trade else (existing + failed_mc_gates or existing)
-    candidate["decision"] = "TRADE" if mc_result.allow_trade else "PASS"
 
     target_validation = validate_pot(
         (mc_result.payload.get("metrics") or {}).get("pop"),
@@ -2071,6 +2093,8 @@ def attach_mc_decision(candidate, legs, spot):
         "DisplayText": f"{rescored['adjustedTotal']} (raw: {rescored['rawTotal']}, penalized for {len(candidate.get('gateFailures') or [])} gate failures)" if rescored["gatePenalty"] > 0 else str(rescored["adjustedTotal"]),
         "Color": "green" if rescored["adjustedTotal"] >= 70 else ("amber" if rescored["adjustedTotal"] >= 50 else "red"),
     }
+    candidate["hardPassReasons"] = candidate_hard_pass_reasons(candidate, data_quality_status=mc_result.data_quality_status)
+    candidate["decision"] = "TRADE" if mc_result.allow_trade and not candidate["hardPassReasons"] else "PASS"
     return candidate
 
 
@@ -2205,7 +2229,20 @@ def generate_brief_payload():
         mandatory_missing.append("realized_vol")
 
     no_candidates_reason = None
+    data_quality_dashboard = build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_missing)
+    override_policy = build_override_policy(data_quality_dashboard, analyses)
+
     constraint_gates = {"min_debit_not_met", "min_credit_not_met", "spread_bps_exceeded"}
+    data_quality_overall = (data_quality_dashboard or {}).get('overall')
+
+    for analysis in analyses:
+        hard_reasons = candidate_hard_pass_reasons(
+            analysis,
+            data_quality_status=((analysis.get('mc') or {}).get('dataQualityStatus')) or data_quality_overall,
+        )
+        analysis['hardPassReasons'] = sorted(set((analysis.get('hardPassReasons') or []) + hard_reasons))
+        if analysis['hardPassReasons']:
+            analysis['decision'] = 'PASS'
 
     if mandatory_missing:
         final_decision = "NO TRADE"
@@ -2213,15 +2250,14 @@ def generate_brief_payload():
         final_decision = "PASS"
         no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
     else:
-        final_decision = analyses[0]["decision"]
+        tradeable_candidates = [a for a in analyses if a.get('decision') == 'TRADE' and not a.get('hardPassReasons')]
+        final_decision = "TRADE" if tradeable_candidates else "PASS"
         if all(any("NO_CANDIDATES:" in g for g in (a.get("gateFailures") or [])) for a in analyses):
             no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
         elif all((a.get("decision") != "TRADE") and any(g in constraint_gates for g in (a.get("gateFailures") or [])) for a in analyses):
             no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
 
     recommendation = build_recommendation(analyses, context, mandatory_missing, no_candidates_reason)
-    data_quality_dashboard = build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_missing)
-    override_policy = build_override_policy(data_quality_dashboard, analyses)
 
     output = {
         "dataQuality": data_quality_dashboard,

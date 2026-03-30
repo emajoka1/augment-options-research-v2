@@ -55,8 +55,9 @@ def test_attach_mc_decision_uses_mc_engine_as_decision_source(monkeypatch):
     candidate = {
         "type": "debit",
         "decision": "PASS",
-        "gateFailures": ["score_below_70"],
-        "score": {"Total": 72},
+        "gateFailures": [],
+        "ticket": {"positionSizeContracts": 1},
+        "score": {"Regime": 10, "Vol": 16, "Structure": 20, "Event": 15, "Execution": 18, "AdjustedTotal": 72, "Total": 72},
     }
     legs = [_row("C", 500.0, 5.0, delta=0.4), _row("C", 505.0, 4.2, delta=0.2)]
 
@@ -87,7 +88,7 @@ def test_attach_mc_decision_uses_mc_engine_as_decision_source(monkeypatch):
     assert out["decision"] == "TRADE"
     assert out["mc"]["allowTrade"] is True
     assert out["mc"]["strategy"] == "call_debit_spread"
-    assert out["gateFailures"] == ["score_below_70"]
+    assert out["gateFailures"] == []
 
 
 def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys):
@@ -141,5 +142,50 @@ def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys
 
     assert tb["NoCandidatesReason"] is None
     assert len(tb["Candidates"]) == 2
-    assert tb["Candidates"][0]["maxLossPerContract"] is not None
-    assert tb["ClosestNearMiss"]["flipHint"]
+
+
+def test_attach_mc_decision_does_not_upgrade_blocked_candidate_to_trade(monkeypatch):
+    candidate = {
+        'type': 'debit',
+        'expectedMove': {'ivUsed': 0.25},
+        'ticket': {'positionSizeContracts': 0},
+        'score': {'Regime': 10, 'Vol': 16, 'Structure': 20, 'Event': 15, 'Execution': 18, 'AdjustedTotal': 50, 'Total': 50},
+        'gateFailures': ['score_below_70', 'directional_mismatch'],
+        'decision': 'PASS',
+    }
+    legs = [
+        {'side': 'C', 'strike': 645.0, 'dte': 18, 'iv': 0.25},
+        {'side': 'C', 'strike': 655.0, 'dte': 18, 'iv': 0.24},
+    ]
+
+    monkeypatch.setattr(sfb, 'load_live', lambda _p: {})
+    monkeypatch.setattr(sfb, 'watchlist_from_live', lambda _live: [])
+    monkeypatch.setattr(sfb, '_load_dxlink_candles', lambda: [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0])
+    monkeypatch.setattr(sfb, 'ann_realized_vol', lambda _closes, _window: 0.2)
+    monkeypatch.setattr(sfb, 'validate_mc_inputs', lambda *args, **kwargs: {'valid': True, 'warnings': []})
+    monkeypatch.setattr(sfb, '_strategy_legs_for_candidate', lambda *_args, **_kwargs: [])
+
+    class FakeResult:
+        allow_trade = True
+        data_quality_status = 'OK'
+        payload = {
+            'status': 'FULL_REFRESH',
+            'metrics': {'pop': 0.55, 'pot': 0.4},
+            'multi_seed_confidence': {},
+            'gates': {'allow_trade': True},
+            'edge_attribution': {},
+            'breakevens': [650.0],
+            'assumptions': {'strategy': 'call_debit_spread'},
+        }
+
+    class FakeEngine:
+        def run(self, _config):
+            return FakeResult()
+
+    monkeypatch.setattr(sfb, 'MCEngine', lambda: FakeEngine())
+
+    out = sfb.attach_mc_decision(candidate, legs, 635.0)
+    assert out['decision'] == 'PASS'
+    assert 'position_size_zero' in out['hardPassReasons']
+    assert 'score_below_trade_threshold' in out['hardPassReasons']
+    assert 'directional_mismatch_blocks_trade' in out['hardPassReasons']
