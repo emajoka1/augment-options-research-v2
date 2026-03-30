@@ -197,6 +197,9 @@ async function main() {
       symbol: 'ZN',
       streamerSymbol: US10Y_SYMBOL,
       proxy: 'ZN_futures_proxy',
+      pendingRollSymbol: US10Y_SYMBOL,
+      rollAdjusted: true,
+      rollGapSkip: false,
     },
     quoteToken: {
       level: null,
@@ -244,6 +247,13 @@ async function main() {
 
 function flushOutputs() {
     const now = Date.now();
+    if (state.us10y.pendingRollSymbol && state.us10y.pendingRollSymbol !== state.us10y.streamerSymbol) {
+      state.us10y.prevDayClosePrice = undefined;
+      state.us10y.rollGapSkip = true;
+      state.us10y.rollAdjusted = true;
+      state.us10y.rollNote = `Skipped day-over-day change because active ZN contract rolled from ${state.us10y.pendingRollSymbol} to ${state.us10y.streamerSymbol}`;
+      state.us10y.pendingRollSymbol = state.us10y.streamerSymbol;
+    }
     const candleRows = [...candlesByTime.values()].sort((a, b) => a.time - b.time);
     const dailyCloseRows = buildDailyCloseRows(candleRows);
     const snapshot = {
@@ -432,6 +442,8 @@ function flushOutputs() {
     if (Number.isFinite(event.dayOpenPrice)) state.us10y.dayOpenPrice = event.dayOpenPrice;
     if (Number.isFinite(event.dayHighPrice)) state.us10y.dayHighPrice = event.dayHighPrice;
     if (Number.isFinite(event.dayLowPrice)) state.us10y.dayLowPrice = event.dayLowPrice;
+    state.us10y.rollGapSkip = false;
+    state.us10y.rollNote = undefined;
     noteEvent();
   }
 
