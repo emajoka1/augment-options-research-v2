@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.emajoka.augment.dxlink</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-lc</string>
+    <string>source /Users/forge/.config/tastytrade.env; cd /Users/forge/.openclaw/workspace/augment-options-research-v2/services/research-engine &amp;&amp; env DXLINK_US10Y_SYMBOL=/ZNU26:XCBT node scripts/dxlink_stream_daemon.cjs</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>WorkingDirectory</key><string>/Users/forge/.openclaw/workspace/augment-options-research-v2/services/research-engine</string>
+  <key>StandardOutPath</key><string>/Users/forge/.openclaw/workspace/augment-options-research-v2/.run/logs/dxlink.launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/forge/.openclaw/workspace/augment-options-research-v2/.run/logs/dxlink.launchd.err</string>
+</dict>
+</plist>
