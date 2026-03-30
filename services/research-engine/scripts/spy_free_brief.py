@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import uuid
+import requests
 from datetime import datetime, timezone, timedelta, time as dt_time
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -1326,16 +1327,46 @@ def regime_snapshot(spot):
     ma5 = sum(closes[-5:]) / 5 if len(closes) >= 5 else None
     trend_up = bool(ma5 and ma20 and ma5 > ma20 and closes[-1] > ma20) if closes else False
 
-    # VIX and rates context unavailable without fallback sources — report unknown
-    vix_dir = "unknown"
-    rates_dir = "unknown"
+    def fetch_fred_day_change(series_id: str):
+        try:
+            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            lines = [line.strip() for line in resp.text.splitlines() if line.strip()]
+            if len(lines) < 3:
+                return None, 'unknown', None
+            values = []
+            for line in lines[1:]:
+                try:
+                    obs_date, raw_value = line.split(',', 1)
+                except ValueError:
+                    continue
+                if raw_value in {'.', ''}:
+                    continue
+                try:
+                    values.append((obs_date, float(raw_value)))
+                except Exception:
+                    continue
+            if len(values) < 2:
+                return None, 'unknown', None
+            prev_date, prev_value = values[-2]
+            last_date, last_value = values[-1]
+            change = float(last_value - prev_value)
+            observed_at = datetime.fromisoformat(last_date).replace(tzinfo=timezone.utc).isoformat()
+            direction = 'up' if change > 0 else ('down' if change < 0 else 'flat')
+            return change, direction, observed_at
+        except Exception:
+            return None, 'unknown', None
+
+    vix_change, vix_dir, vix_observed_at = fetch_fred_day_change('VIXCLS')
+    us10y_change, rates_dir, rates_observed_at = fetch_fred_day_change('DGS10')
 
     risk_regime = "Risk-on" if trend_up else "Neutral"
 
     metrics = [
         {"metric": "MA5-MA20", "value": round((ma5 - ma20), 3) if ma5 and ma20 else None, "threshold": ">0", "interpretation": "uptrend" if trend_up else "not-uptrend", "observedAt": datetime.now(timezone.utc).isoformat()},
-        {"metric": "VIX day change", "value": None, "threshold": "<0 risk-on", "interpretation": vix_dir, "observedAt": None},
-        {"metric": "US10Y day change", "value": None, "threshold": "context", "interpretation": rates_dir, "observedAt": None},
+        {"metric": "VIX day change", "value": round(vix_change, 3) if vix_change is not None else None, "threshold": "<0 risk-on", "interpretation": vix_dir, "observedAt": vix_observed_at},
+        {"metric": "US10Y day change", "value": round(us10y_change, 3) if us10y_change is not None else None, "threshold": "context", "interpretation": rates_dir, "observedAt": rates_observed_at},
     ]
 
     rv10 = ann_realized_vol(closes, 10)
