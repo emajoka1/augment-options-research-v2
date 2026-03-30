@@ -523,6 +523,22 @@ def test_build_data_quality_dashboard_marks_missing_inputs_degraded():
     assert any(c['input'] == 'rv10' and c['status'] in {'MISSING', 'SUSPECT'} for c in out['checks'])
 
 
+def test_build_override_policy_blocks_on_error():
+    dq = {'overall': 'ERROR'}
+    analyses = [{'gateFailures': ['a', 'b', 'c', 'd']}]
+    out = sfb.build_override_policy(dq, analyses)
+    assert out['allowed'] is False
+    assert out['requiresAcknowledgment']
+
+
+def test_build_override_policy_requires_ack_on_degraded():
+    dq = {'overall': 'DEGRADED'}
+    analyses = [{'gateFailures': ['a', 'b', 'c', 'd']}]
+    out = sfb.build_override_policy(dq, analyses)
+    assert out['allowed'] is True
+    assert len(out['requiresAcknowledgment']) >= 2
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'

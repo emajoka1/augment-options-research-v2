@@ -33,6 +33,7 @@ DXLINK_DAILY_CLOSES_OUT = os.environ.get("DXLINK_DAILY_CLOSES_OUT", str(DXLINK_L
 DXLINK_DAILY_BACKFILL_SCRIPT = os.environ.get("DXLINK_DAILY_BACKFILL_SCRIPT", str(ROOT / "scripts" / "backfill_daily_closes.py"))
 DXLINK_CANDLE_SYMBOL = os.environ.get("DXLINK_CANDLE_SYMBOL", "SPY{=5m}")
 PORTFOLIO_CONTEXT_PATH = os.environ.get("SPY_PORTFOLIO_CONTEXT_PATH", str(ROOT / "data" / "portfolio_context.json"))
+OVERRIDE_LOG_PATH = os.environ.get("SPY_OVERRIDE_LOG_PATH", str(ROOT / "data" / "override_log.jsonl"))
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_CLOSE_ET = dt_time(16, 0)
 
@@ -973,6 +974,56 @@ def build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_miss
         'timestamp': datetime.now(ZoneInfo('Europe/London')).isoformat(timespec='minutes'),
         'checks': checks,
         'recommendation': recommendation,
+    }
+
+
+def build_override_policy(data_quality_dashboard, analyses):
+    overall = (data_quality_dashboard or {}).get('overall')
+    max_gate_failures = max((len(a.get('gateFailures') or []) for a in analyses), default=0)
+    requires_ack = []
+    if max_gate_failures >= 3:
+        requires_ack.append(f"I understand this trade failed {max_gate_failures} gate checks")
+    if overall in {'DEGRADED', 'ERROR'}:
+        requires_ack.append("I understand the data pipeline has known errors")
+    if requires_ack:
+        requires_ack.append("I accept full responsibility for losses if I override")
+
+    if overall == 'ERROR':
+        return {
+            'allowed': False,
+            'reason': 'Data quality is ERROR — override disabled until inputs are valid',
+            'requiresAcknowledgment': requires_ack,
+            'logPath': OVERRIDE_LOG_PATH,
+            'logSchema': {
+                'timestamp': 'ISO8601',
+                'candidateType': 'string',
+                'acknowledgments': 'string[]',
+            },
+        }
+
+    if overall == 'DEGRADED' or max_gate_failures >= 3:
+        return {
+            'allowed': True,
+            'reason': 'Override requires explicit acknowledgment due to degraded data quality or multiple gate failures',
+            'requiresAcknowledgment': requires_ack,
+            'logPath': OVERRIDE_LOG_PATH,
+            'logSchema': {
+                'timestamp': 'ISO8601',
+                'candidateType': 'string',
+                'acknowledgments': 'string[]',
+            },
+        }
+
+    return {
+        'allowed': True,
+        'reason': 'Override allowed; no extra friction required',
+        'requiresAcknowledgment': [],
+        'logPath': OVERRIDE_LOG_PATH,
+        'logSchema': {
+            'timestamp': 'ISO8601',
+            'candidateType': 'string',
+            'acknowledgments': 'string[]',
+        },
     }
 
 
@@ -2159,9 +2210,11 @@ def generate_brief_payload():
 
     recommendation = build_recommendation(analyses, context, mandatory_missing, no_candidates_reason)
     data_quality_dashboard = build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_missing)
+    override_policy = build_override_policy(data_quality_dashboard, analyses)
 
     output = {
         "dataQuality": data_quality_dashboard,
+        "overridePolicy": override_policy,
         "brief_meta": {
             "brief_id": brief_id,
             "snapshot_id": snapshot_id,
@@ -2186,6 +2239,7 @@ def generate_brief_payload():
             "Candidates": analyses,
             "ClosestNearMiss": closest_near_miss,
             "Recommendation": recommendation,
+            "OverridePolicy": override_policy,
             "Final Decision": final_decision,
             "NoCandidatesReason": no_candidates_reason,
             "DefaultBias": "NO TRADE", 
