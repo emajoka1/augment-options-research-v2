@@ -76,6 +76,28 @@ REGIME_STRATEGY_FIT = {
     },
 }
 
+STRATEGY_DIRECTIONAL_BIAS = {
+    'condor': 'neutral',
+    'credit_put': 'bullish',
+    'credit_call': 'bearish',
+    'debit_call': 'bullish',
+    'debit_put': 'bearish',
+    'straddle': 'neutral',
+    'strangle': 'neutral',
+}
+
+TREND_ALIGNMENT = {
+    ('bullish', 'up'): 1.0,
+    ('bullish', 'neutral'): 0.7,
+    ('bullish', 'down_or_flat'): 0.2,
+    ('bearish', 'down_or_flat'): 1.0,
+    ('bearish', 'neutral'): 0.7,
+    ('bearish', 'up'): 0.2,
+    ('neutral', 'neutral'): 1.0,
+    ('neutral', 'up'): 0.6,
+    ('neutral', 'down_or_flat'): 0.6,
+}
+
 CRITICAL_GATES = {
     'expected_move_mismatch', 'mc:ev_gate', 'mc:cvar_worst_gate',
     'mc:pop_or_pot', 'execution_poor', 'spread_bps_exceeded'
@@ -856,6 +878,26 @@ def compute_final_score(component_scores, gate_results):
     }
 
 
+def check_directional_alignment(strategy_type, trend):
+    bias = STRATEGY_DIRECTIONAL_BIAS.get(strategy_type, 'neutral')
+    alignment = TREND_ALIGNMENT.get((bias, trend), 0.5)
+    if alignment <= 0.3:
+        return {
+            'aligned': False,
+            'score_multiplier': alignment,
+            'warning': f'{strategy_type} is {bias} but trend is {trend} — directional mismatch',
+            'gate': 'directional_mismatch',
+            'bias': bias,
+        }
+    return {
+        'aligned': True,
+        'score_multiplier': alignment,
+        'warning': None,
+        'gate': None,
+        'bias': bias,
+    }
+
+
 def compute_vol_edge_score(iv_current, rv10, rv20, strategy_type, max_score=20):
     rv_best = max(v for v in [rv10, rv20] if v is not None) if any(v is not None for v in [rv10, rv20]) else None
     if iv_current is None or rv_best is None or rv_best <= 0:
@@ -988,7 +1030,9 @@ def score_components(candidate, context, vol, exec_ok, event_ok):
         "debit": "debit_call",
         "credit": "credit_put",
     }.get(candidate["type"], "condor")
+    directional_alignment = check_directional_alignment(strategy_key, trend)
     regime_match = REGIME_STRATEGY_FIT.get((risk_state, trend), {}).get(strategy_key, 0.5)
+    regime_match *= directional_alignment["score_multiplier"]
     raw_regime_fit = int(round(25 * regime_match))
     regime_fit = int(round(raw_regime_fit * regime_quality["qualityFactor"]))
 
@@ -1021,6 +1065,7 @@ def score_components(candidate, context, vol, exec_ok, event_ok):
         "machineFactors": {
             "regimeMatch": round(regime_match, 3),
             "regimeDataQualityFactor": round(regime_quality["qualityFactor"], 3),
+            "directionalAlignment": directional_alignment,
             "volEdgeNorm": round(vol_edge_norm, 3),
             "structureNorm": round(_clip(structure_norm), 3),
             "eventNorm": 0.85 if event_ok else 0.35,
@@ -1123,6 +1168,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
             missing.append(req)
     event_ok = True  # calendar links present; hard binary on link availability
     score = score_components({"type": candidate_type, "maxLoss": max_loss, "breakevens": breakevens}, context, vol, exec_ok, event_ok)
+    directional_alignment = ((score.get("machineFactors") or {}).get("directionalAlignment") or {})
 
     why = [
         f"Execution: worst_leg_spread_pct={round(worst_leg_spread_pct,2) if worst_leg_spread_pct is not None else None}% | avg_leg_spread_pct={round(execution.get('avg_leg_spread_pct'),2) if execution.get('avg_leg_spread_pct') is not None else None}% | multi_spread_pct={round(execution.get('multi_spread_pct'),2) if execution.get('multi_spread_pct') is not None else None}% => {'Accept' if exec_ok else 'Reject'}",
@@ -1148,6 +1194,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         gates.append("min_credit_not_met")
     if spread_bps is not None and spread_bps > MAX_SPREAD_BPS:
         gates.append("spread_bps_exceeded")
+    if directional_alignment.get("gate"):
+        gates.append(directional_alignment["gate"])
 
     if gates:
         decision = "PASS"
@@ -1206,6 +1254,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         "counterfactuals": counterfactuals,
         "decision": decision,
         "gateFailures": gates,
+        "directionalAlignment": directional_alignment,
         "maxLossPerContract": round(max_loss, 2),
         "structure": {
             "name": candidate_type,

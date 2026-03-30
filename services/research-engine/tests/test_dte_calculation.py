@@ -227,7 +227,7 @@ def test_regime_data_quality_all_fresh_preserves_raw_score():
         }
     }
     score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
-    assert score['Regime'] == 12
+    assert score['Regime'] == 8
     assert score['machineFactors']['regimeDataQualityFactor'] == 1.0
 
 
@@ -245,7 +245,7 @@ def test_regime_score_recalibration_condor_neutral_down_flat_one_third_quality()
         }
     }
     score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
-    assert score['Regime'] == 6
+    assert score['Regime'] == 3
 
 
 def test_regime_score_recalibration_credit_neutral_down_flat_one_third_quality():
@@ -262,7 +262,7 @@ def test_regime_score_recalibration_credit_neutral_down_flat_one_third_quality()
         }
     }
     score = sfb.score_components({'type': 'credit', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
-    assert score['Regime'] == 3
+    assert score['Regime'] == 1
 
 
 def test_regime_score_recalibration_debit_neutral_down_flat_one_third_quality():
@@ -279,7 +279,7 @@ def test_regime_score_recalibration_debit_neutral_down_flat_one_third_quality():
         }
     }
     score = sfb.score_components({'type': 'debit', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
-    assert score['Regime'] == 3
+    assert score['Regime'] == 1
 
 
 def test_vol_edge_score_condor_elevated_iv_is_good():
@@ -354,6 +354,39 @@ def test_validate_mc_inputs_warns_on_zero_dte_but_can_proceed():
     out = sfb.validate_mc_inputs(636.0, 0.30, 0.15, 0, legs, 'condor')
     assert out['valid'] is True
     assert any('DTE is 0' in w for w in out['warnings'])
+
+
+def test_directional_alignment_flags_bullish_strategy_in_down_flat_trend():
+    out = sfb.check_directional_alignment('credit_put', 'down_or_flat')
+    assert out['aligned'] is False
+    assert out['score_multiplier'] == 0.2
+    assert out['gate'] == 'directional_mismatch'
+
+
+def test_directional_alignment_allows_neutral_condor_in_down_flat_with_penalty_only():
+    out = sfb.check_directional_alignment('condor', 'down_or_flat')
+    assert out['aligned'] is True
+    assert out['score_multiplier'] == 0.6
+    assert out['gate'] is None
+
+
+def test_regime_score_applies_directional_alignment_multiplier():
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'trend': 'down_or_flat',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'not-uptrend', 'observedAt': now},
+                {'metric': 'VIX day change', 'value': -0.5, 'interpretation': 'risk-on', 'observedAt': now},
+                {'metric': 'US10Y day change', 'value': 0.1, 'interpretation': 'context', 'observedAt': now},
+            ],
+        },
+        'realizedVol': {'rv10': 0.15, 'rv20': 0.14},
+    }
+    score = sfb.score_components({'type': 'credit', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'ivCurrent': 0.29, 'classifier': {'ivRvRatio': 1.9, 'regime': 'ELEVATED_VOL'}}, True, True)
+    assert score['Regime'] == 2
+    assert score['machineFactors']['directionalAlignment']['gate'] == 'directional_mismatch'
 
 
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
