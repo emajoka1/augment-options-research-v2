@@ -2189,14 +2189,15 @@ def attach_mc_decision(candidate, legs, spot):
             json.dump(snapshot_payload, tmp)
             snapshot_file = tmp.name
 
+        short_premium = candidate.get("type") in {"credit", "condor"}
         mc_result = MCEngine().run(
             MCEngineConfig(
                 symbol="SPY",
                 spot=float(spot),
                 expiry_days=float(max(dte, 1)),
                 dt_days=MC_DT_DAYS,
-                n_batches=max(1, MC_N_BATCHES),
-                paths_per_batch=max(100, MC_PATHS_PER_BATCH),
+                n_batches=max(10 if short_premium else 1, MC_N_BATCHES),
+                paths_per_batch=max(1000 if short_premium else 100, MC_PATHS_PER_BATCH),
                 strategy_type=strategy_type,
                 strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
                 entry_cost_override=entry_cost_override,
@@ -2236,6 +2237,7 @@ def attach_mc_decision(candidate, legs, spot):
         "edgeAttribution": mc_result.payload.get("edge_attribution"),
         "breakevens": mc_result.payload.get("breakevens"),
         "strategy": mc_result.payload.get("assumptions", {}).get("strategy"),
+        "assumptions": mc_result.payload.get("assumptions"),
         "inputValidation": mc_validation,
     }
 
