@@ -66,7 +66,7 @@ ensure_state()
 
 @st.cache_resource
 def get_http_client() -> httpx.Client:
-    return httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0))
+    return httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0))
 
 
 def api_get(base: str, path: str, params: dict[str, Any] | None = None) -> tuple[int, Any]:
