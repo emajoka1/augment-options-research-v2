@@ -103,7 +103,8 @@ TREND_ALIGNMENT = {
 
 CRITICAL_GATES = {
     'expected_move_mismatch', 'mc:ev_gate', 'mc:cvar_worst_gate',
-    'mc:pop_or_pot', 'execution_poor', 'spread_bps_exceeded', 'directional_mismatch'
+    'mc:pop_or_pot', 'execution_poor', 'spread_bps_exceeded', 'directional_mismatch',
+    'loss_model_understates_defined_risk'
 }
 WARNING_GATES = {
     'mc:ev_ci_gate', 'score_below_70'
@@ -520,6 +521,27 @@ def validate_pot(pop, pot, strategy_type):
     return None
 
 
+def validate_defined_risk_loss_model(candidate, mc_metrics):
+    ticket = candidate.get('ticket') or {}
+    max_loss = _to_float(ticket.get('maxLoss'))
+    modeled_min_pl = _to_float((mc_metrics or {}).get('min_pl'))
+    strategy_type = candidate.get('type')
+    if strategy_type not in {'debit', 'credit', 'condor'} or max_loss is None or max_loss <= 0 or modeled_min_pl is None:
+        return None
+    modeled_loss = abs(modeled_min_pl)
+    coverage = modeled_loss / max_loss if max_loss > 0 else None
+    if coverage is not None and coverage < 0.50:
+        return {
+            'warning': f"MC modeled downside only reaches {coverage:.0%} of theoretical max loss for a defined-risk structure",
+            'suggestion': 'Treat this MC output as unreliable until downside modeling matches the actual spread risk',
+            'flag': 'loss_model_understates_defined_risk',
+            'coverage': coverage,
+            'modeledLoss': modeled_loss,
+            'theoreticalMaxLoss': max_loss,
+        }
+    return None
+
+
 def validate_mc_inputs(spot, iv, rv, dte, legs, strategy_type):
     errors = []
     warnings = []
@@ -854,6 +876,8 @@ def candidate_hard_pass_reasons(candidate, recommendation_signal=None, data_qual
         reasons.append('data_quality_blocks_trade')
     if 'directional_mismatch' in gate_failures:
         reasons.append('directional_mismatch_blocks_trade')
+    if 'loss_model_understates_defined_risk' in gate_failures:
+        reasons.append('loss_model_blocks_trade')
 
     return reasons
 
@@ -2090,6 +2114,11 @@ def attach_mc_decision(candidate, legs, spot):
     if target_validation:
         candidate.setdefault("warnings", []).append(target_validation)
         candidate["gateFailures"] = (candidate.get("gateFailures") or []) + [target_validation["flag"]]
+
+    loss_model_validation = validate_defined_risk_loss_model(candidate, metrics)
+    if loss_model_validation:
+        candidate.setdefault("warnings", []).append(loss_model_validation)
+        candidate["gateFailures"] = (candidate.get("gateFailures") or []) + [loss_model_validation["flag"]]
 
     score = candidate.get("score") or {}
     rescored = compute_final_score(score, candidate.get("gateFailures") or [])

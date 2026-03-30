@@ -343,6 +343,24 @@ def test_candidate_hard_pass_reasons_block_trade_on_user_safety_rules():
     }
 
 
+def test_validate_defined_risk_loss_model_flags_understated_downside():
+    candidate = {'type': 'credit', 'ticket': {'maxLoss': 760.0}}
+    out = sfb.validate_defined_risk_loss_model(candidate, {'min_pl': -100.0})
+    assert out is not None
+    assert out['flag'] == 'loss_model_understates_defined_risk'
+
+
+def test_candidate_hard_pass_reasons_blocks_loss_model_failures():
+    candidate = {
+        'ticket': {'positionSizeContracts': 1},
+        'score': {'AdjustedTotal': 80},
+        'gateFailures': ['loss_model_understates_defined_risk'],
+        'mc': {'dataQualityStatus': 'OK'},
+    }
+    reasons = sfb.candidate_hard_pass_reasons(candidate)
+    assert reasons == ['loss_model_blocks_trade']
+
+
 def test_set_trade_target_condor_one_dte_uses_80pct_profit_target():
     target, pct = sfb.set_trade_target('condor', 1.18, None, 1.18, 1)
     assert target == 0.24
