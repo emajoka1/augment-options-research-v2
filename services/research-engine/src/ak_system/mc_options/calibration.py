@@ -11,6 +11,13 @@ from .iv_dynamics import IVDynamicsParams, fit_surface_from_snapshot
 from .models import GBMParams, HestonParams, JumpDiffusionParams
 
 
+def normalize_iv_decimal(iv: float) -> float:
+    value = float(iv)
+    if value > 2.0:
+        value /= 100.0
+    return value
+
+
 @dataclass
 class MarketInputs:
     spot: float
@@ -54,6 +61,7 @@ def fit_iv_params_from_snapshot(
     expiries_days: np.ndarray | None = None,
     target_expiry_days: float | None = None,
 ) -> IVDynamicsParams:
+    ivs = np.array([normalize_iv_decimal(v) for v in np.asarray(ivs, dtype=float)], dtype=float)
     fit = fit_surface_from_snapshot(
         spot=spot,
         strikes=strikes,
@@ -70,6 +78,7 @@ def fit_iv_params_from_snapshot(
         iv.iv_atm = float(beta[0])
         iv.theta_iv = float(beta[0])
         iv.term = float(beta[1])
+    assert 0.05 <= iv.iv_atm <= 1.50, f"iv_atm={iv.iv_atm} — unit error"
     return iv
 
 
