@@ -332,10 +332,10 @@ class MCEngine:
         if strategy.name in {"put_credit_spread", "iron_condor", "iron_fly"} and (rv10 is None or rv20 is None):
             jump_used = JumpDiffusionParams(
                 mu=(jump_used.mu if jump_used else (config.r - config.q)),
-                sigma=max((jump_used.sigma if jump_used else ivp.iv_atm), max(0.20, ivp.iv_atm)),
-                jump_lambda=max((jump_used.jump_lambda if jump_used else 0.25), 0.75),
-                jump_mu=min((jump_used.jump_mu if jump_used else -0.06), -0.08),
-                jump_sigma=max((jump_used.jump_sigma if jump_used else 0.20), 0.25),
+                sigma=max((jump_used.sigma if jump_used else ivp.iv_atm), max(0.18, ivp.iv_atm)),
+                jump_lambda=max((jump_used.jump_lambda if jump_used else 0.25), 0.25),
+                jump_mu=min((jump_used.jump_mu if jump_used else -0.06), -0.03),
+                jump_sigma=min(max((jump_used.jump_sigma if jump_used else 0.20), 0.06), 0.12),
             )
 
         snapshot_fp = _snapshot_fingerprint(config.snapshot_file)
