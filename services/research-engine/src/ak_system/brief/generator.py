@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
+import runpy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,14 +24,11 @@ class BriefGenerator:
         if symbol.upper() != 'SPY':
             raise NotImplementedError('Brief generation is currently supported for SPY only')
 
-        payload = self._load_spy_module().generate_brief_payload()
+        payload = self._load_spy_module()['generate_brief_payload']()
         return BriefResult(symbol='SPY', payload=payload, source='native_module')
 
     def _load_spy_module(self):
         path = self.root / 'scripts' / 'spy_free_brief.py'
-        spec = importlib.util.spec_from_file_location('spy_free_brief', path)
-        if spec is None or spec.loader is None:
+        if not path.exists():
             raise RuntimeError('Unable to load spy_free_brief.py')
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
+        return runpy.run_path(str(path))
