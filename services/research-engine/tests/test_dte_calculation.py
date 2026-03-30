@@ -218,6 +218,7 @@ def test_regime_data_quality_all_fresh_preserves_raw_score():
     context = {
         'regime': {
             'riskState': 'Neutral',
+            'trend': 'up',
             'metrics': [
                 {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'uptrend', 'observedAt': now},
                 {'metric': 'VIX day change', 'value': -0.5, 'interpretation': 'risk-on', 'observedAt': now},
@@ -226,8 +227,59 @@ def test_regime_data_quality_all_fresh_preserves_raw_score():
         }
     }
     score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
-    assert score['Regime'] == 25
+    assert score['Regime'] == 12
     assert score['machineFactors']['regimeDataQualityFactor'] == 1.0
+
+
+def test_regime_score_recalibration_condor_neutral_down_flat_one_third_quality():
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'trend': 'down_or_flat',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'not-uptrend', 'observedAt': now},
+                {'metric': 'VIX day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+                {'metric': 'US10Y day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+            ],
+        }
+    }
+    score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
+    assert score['Regime'] == 6
+
+
+def test_regime_score_recalibration_credit_neutral_down_flat_one_third_quality():
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'trend': 'down_or_flat',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'not-uptrend', 'observedAt': now},
+                {'metric': 'VIX day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+                {'metric': 'US10Y day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+            ],
+        }
+    }
+    score = sfb.score_components({'type': 'credit', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
+    assert score['Regime'] == 3
+
+
+def test_regime_score_recalibration_debit_neutral_down_flat_one_third_quality():
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'trend': 'down_or_flat',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'not-uptrend', 'observedAt': now},
+                {'metric': 'VIX day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+                {'metric': 'US10Y day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+            ],
+        }
+    }
+    score = sfb.score_components({'type': 'debit', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
+    assert score['Regime'] == 3
 
 
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):

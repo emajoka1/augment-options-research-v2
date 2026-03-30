@@ -52,6 +52,30 @@ MC_N_BATCHES = int(os.environ.get("SPY_BRIEF_MC_N_BATCHES", "2"))
 MC_PATHS_PER_BATCH = int(os.environ.get("SPY_BRIEF_MC_PATHS_PER_BATCH", "250"))
 MC_DT_DAYS = float(os.environ.get("SPY_BRIEF_MC_DT_DAYS", "0.5"))
 
+REGIME_STRATEGY_FIT = {
+    ("Neutral", "down_or_flat"): {
+        "condor": 0.7,
+        "credit_put": 0.4,
+        "credit_call": 0.8,
+        "debit_put": 0.7,
+        "debit_call": 0.3,
+    },
+    ("Risk-on", "up"): {
+        "condor": 0.5,
+        "credit_put": 0.9,
+        "credit_call": 0.2,
+        "debit_call": 0.9,
+        "debit_put": 0.1,
+    },
+    ("Risk-off", "down_or_flat"): {
+        "condor": 0.3,
+        "credit_put": 0.2,
+        "credit_call": 0.8,
+        "debit_put": 0.9,
+        "debit_call": 0.1,
+    },
+}
+
 
 def risk_cap_dollars() -> float:
     return shared_risk_cap_dollars(ACCOUNT_SIZE, RISK_PCT, MAX_RISK_DOLLARS)
@@ -783,21 +807,20 @@ def vol_state(rows, rv10, rv20, spot=None):
 
 def score_components(candidate, context, vol, exec_ok, event_ok):
     # Machine-weighted scoring with normalized factors, then mapped to required caps.
-    risk_state = context["regime"]["riskState"]
-    regime_quality = compute_data_quality_factor(context["regime"])
+    regime = context["regime"]
+    risk_state = regime["riskState"]
+    trend = regime.get("trend")
+    regime_quality = compute_data_quality_factor(regime)
     vol_regime = (vol.get("classifier") or {}).get("regime")
     iv_rv = (vol.get("classifier") or {}).get("ivRvRatio")
 
     # A) Regime Fit (25)
-    regime_match = 0.0
-    if candidate["type"] in ("debit", "credit") and risk_state == "Risk-on":
-        regime_match = 1.0
-    elif candidate["type"] == "condor" and risk_state == "Neutral":
-        regime_match = 1.0
-    elif risk_state == "Risk-off":
-        regime_match = 0.3
-    else:
-        regime_match = 0.6
+    strategy_key = {
+        "condor": "condor",
+        "debit": "debit_call",
+        "credit": "credit_put",
+    }.get(candidate["type"], "condor")
+    regime_match = REGIME_STRATEGY_FIT.get((risk_state, trend), {}).get(strategy_key, 0.5)
     raw_regime_fit = int(round(25 * regime_match))
     regime_fit = int(round(raw_regime_fit * regime_quality["qualityFactor"]))
 
