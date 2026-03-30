@@ -181,6 +181,55 @@ def test_build_trade_condor_not_rejected_by_tight_spreads_alone():
     assert execution.get('multi_spread_pct') < 10.0
 
 
+def test_regime_data_quality_one_of_three_caps_score_to_one_third():
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'uptrend', 'observedAt': now},
+                {'metric': 'VIX day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+                {'metric': 'US10Y day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+            ],
+        }
+    }
+    score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
+    assert score['Regime'] <= 8
+    assert score['machineFactors']['regimeDataQualityFactor'] <= 0.33
+
+
+def test_regime_data_quality_all_null_gives_zero_score():
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+                {'metric': 'VIX day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+                {'metric': 'US10Y day change', 'value': None, 'interpretation': 'unknown', 'observedAt': None},
+            ],
+        }
+    }
+    score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
+    assert score['Regime'] == 0
+
+
+def test_regime_data_quality_all_fresh_preserves_raw_score():
+    now = datetime.now(timezone.utc).isoformat()
+    context = {
+        'regime': {
+            'riskState': 'Neutral',
+            'metrics': [
+                {'metric': 'MA5-MA20', 'value': 1.0, 'interpretation': 'uptrend', 'observedAt': now},
+                {'metric': 'VIX day change', 'value': -0.5, 'interpretation': 'risk-on', 'observedAt': now},
+                {'metric': 'US10Y day change', 'value': 0.1, 'interpretation': 'context', 'observedAt': now},
+            ],
+        }
+    }
+    score = sfb.score_components({'type': 'condor', 'maxLoss': 1, 'breakevens': [1, 2]}, context, {'classifier': {}}, True, True)
+    assert score['Regime'] == 25
+    assert score['machineFactors']['regimeDataQualityFactor'] == 1.0
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'

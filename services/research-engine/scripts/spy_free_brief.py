@@ -593,9 +593,9 @@ def regime_snapshot(spot):
     risk_regime = "Risk-on" if trend_up else "Neutral"
 
     metrics = [
-        {"metric": "MA5-MA20", "value": round((ma5 - ma20), 3) if ma5 and ma20 else None, "threshold": ">0", "interpretation": "uptrend" if trend_up else "not-uptrend"},
-        {"metric": "VIX day change", "value": None, "threshold": "<0 risk-on", "interpretation": vix_dir},
-        {"metric": "US10Y day change", "value": None, "threshold": "context", "interpretation": rates_dir},
+        {"metric": "MA5-MA20", "value": round((ma5 - ma20), 3) if ma5 and ma20 else None, "threshold": ">0", "interpretation": "uptrend" if trend_up else "not-uptrend", "observedAt": datetime.now(timezone.utc).isoformat()},
+        {"metric": "VIX day change", "value": None, "threshold": "<0 risk-on", "interpretation": vix_dir, "observedAt": None},
+        {"metric": "US10Y day change", "value": None, "threshold": "context", "interpretation": rates_dir, "observedAt": None},
     ]
 
     rv10 = ann_realized_vol(closes, 10)
@@ -623,11 +623,75 @@ def regime_snapshot(spot):
             "metrics": metrics,
         },
         "realizedVol": {"rv10": rv10, "rv20": rv20},
+        "dataQuality": {
+            "regime": compute_data_quality_factor({"metrics": metrics}),
+        },
     }
 
 
 def _clip(x, lo=0.0, hi=1.0):
     return max(lo, min(hi, x))
+
+
+def is_data_fresh(metric: dict, max_age_minutes: int = 15) -> bool:
+    observed_at = metric.get("observedAt")
+    if not observed_at:
+        return False
+    try:
+        ts = datetime.fromisoformat(str(observed_at).replace("Z", "+00:00"))
+    except Exception:
+        return False
+    return (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)) <= timedelta(minutes=max_age_minutes)
+
+
+def compute_data_quality_factor(regime_data: dict) -> dict:
+    metrics = ((regime_data or {}).get("metrics") or [])
+    total_inputs = len(metrics)
+    if total_inputs == 0:
+        return {
+            "availableInputs": 0,
+            "freshInputs": 0,
+            "totalInputs": 0,
+            "completeness": 0.0,
+            "freshness": 0.0,
+            "qualityFactor": 0.0,
+            "perMetric": [],
+        }
+
+    per_metric = []
+    available_inputs = 0
+    fresh_inputs = 0
+    for metric in metrics:
+        available = metric.get("value") is not None and metric.get("interpretation") != "unknown"
+        fresh = available and is_data_fresh(metric, max_age_minutes=15)
+        if available:
+            available_inputs += 1
+        if fresh:
+            fresh_inputs += 1
+        per_metric.append({
+            "metric": metric.get("metric"),
+            "available": available,
+            "fresh": fresh,
+            "value": metric.get("value"),
+            "interpretation": metric.get("interpretation"),
+            "observedAt": metric.get("observedAt"),
+        })
+
+    completeness = available_inputs / total_inputs
+    freshness = fresh_inputs / total_inputs
+    quality_factor = min(completeness, freshness)
+    if quality_factor < 0.50:
+        quality_factor = min(quality_factor, 0.33)
+
+    return {
+        "availableInputs": available_inputs,
+        "freshInputs": fresh_inputs,
+        "totalInputs": total_inputs,
+        "completeness": completeness,
+        "freshness": freshness,
+        "qualityFactor": quality_factor,
+        "perMetric": per_metric,
+    }
 
 
 def classify_vol_regime(current_iv, rv10, rv20, term_front_back, skew_put_call):
@@ -720,6 +784,7 @@ def vol_state(rows, rv10, rv20, spot=None):
 def score_components(candidate, context, vol, exec_ok, event_ok):
     # Machine-weighted scoring with normalized factors, then mapped to required caps.
     risk_state = context["regime"]["riskState"]
+    regime_quality = compute_data_quality_factor(context["regime"])
     vol_regime = (vol.get("classifier") or {}).get("regime")
     iv_rv = (vol.get("classifier") or {}).get("ivRvRatio")
 
@@ -733,7 +798,8 @@ def score_components(candidate, context, vol, exec_ok, event_ok):
         regime_match = 0.3
     else:
         regime_match = 0.6
-    regime_fit = int(round(25 * regime_match))
+    raw_regime_fit = int(round(25 * regime_match))
+    regime_fit = int(round(raw_regime_fit * regime_quality["qualityFactor"]))
 
     # B) Volatility Edge (25)
     vol_edge_norm = 0.3
@@ -770,6 +836,7 @@ def score_components(candidate, context, vol, exec_ok, event_ok):
         "Total": total,
         "machineFactors": {
             "regimeMatch": round(regime_match, 3),
+            "regimeDataQualityFactor": round(regime_quality["qualityFactor"], 3),
             "volEdgeNorm": round(vol_edge_norm, 3),
             "structureNorm": round(_clip(structure_norm), 3),
             "eventNorm": 0.85 if event_ok else 0.35,
@@ -1255,12 +1322,14 @@ def generate_brief_payload():
             "spot_source": spot_source,
             "spot_timestamp": spot_ts,
             "dteWarnings": dte_warnings,
+            "context_data_quality": context.get("dataQuality"),
         },
         "TRADE BRIEF": {
             "Time": context["timeUserTz"],
             "Ticker": "SPY",
             "Spot": spot,
             "DTE": dte_summary,
+            "DataQuality": context.get("dataQuality"),
             "Regime": context["regime"],
             "Volatility State": vol,
             "Candidates": analyses,
