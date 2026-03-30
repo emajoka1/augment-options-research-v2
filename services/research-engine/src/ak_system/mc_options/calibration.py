@@ -41,7 +41,7 @@ def defaults_from_market(
     spot: float, iv_atm: float = 0.25
 ) -> tuple[GBMParams, JumpDiffusionParams, HestonParams, IVDynamicsParams]:
     gbm = GBMParams(mu=0.03, sigma=max(0.05, min(1.0, iv_atm)))
-    jd = JumpDiffusionParams(mu=0.03, sigma=gbm.sigma, jump_lambda=0.25, jump_mu=-0.06, jump_sigma=0.20)
+    jd = JumpDiffusionParams(mu=0.03, sigma=gbm.sigma, jump_lambda=1.5, jump_mu=-0.02, jump_sigma=0.03)
     heston = HestonParams(mu=0.03, v0=max(1e-6, iv_atm**2), theta=max(1e-6, iv_atm**2))
     iv = IVDynamicsParams(iv_atm=iv_atm, theta_iv=iv_atm)
     return gbm, jd, heston, iv

@@ -333,9 +333,9 @@ class MCEngine:
             jump_used = JumpDiffusionParams(
                 mu=(jump_used.mu if jump_used else (config.r - config.q)),
                 sigma=max((jump_used.sigma if jump_used else ivp.iv_atm), max(0.18, ivp.iv_atm)),
-                jump_lambda=max((jump_used.jump_lambda if jump_used else 0.25), 0.25),
-                jump_mu=min((jump_used.jump_mu if jump_used else -0.06), -0.03),
-                jump_sigma=min(max((jump_used.jump_sigma if jump_used else 0.20), 0.06), 0.12),
+                jump_lambda=1.5,
+                jump_mu=-0.02,
+                jump_sigma=0.03,
             )
 
         snapshot_fp = _snapshot_fingerprint(config.snapshot_file)
