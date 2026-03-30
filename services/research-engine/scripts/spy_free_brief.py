@@ -2018,13 +2018,24 @@ def attach_mc_decision(candidate, legs, spot):
 
     candidate["decisionSource"] = "mc_engine"
     multi_seed_confidence = mc_result.payload.get("multi_seed_confidence")
+    metrics = mc_result.payload.get("metrics") or {}
+    confidence_intervals = extract_confidence_intervals(multi_seed_confidence)
+    if confidence_intervals:
+        metrics = {
+            **metrics,
+            'ev_ci': confidence_intervals.get('ev'),
+            'pop_ci': confidence_intervals.get('pop'),
+            'sampleSize': confidence_intervals.get('sampleSize'),
+            'convergenceCheck': confidence_intervals.get('convergenceCheck'),
+        }
+
     candidate["mc"] = {
         "status": mc_result.payload.get("status"),
         "allowTrade": bool(mc_result.allow_trade),
         "dataQualityStatus": mc_result.data_quality_status,
-        "metrics": mc_result.payload.get("metrics"),
+        "metrics": metrics,
         "multiSeedConfidence": multi_seed_confidence,
-        "confidenceIntervals": extract_confidence_intervals(multi_seed_confidence),
+        "confidenceIntervals": confidence_intervals,
         "gates": mc_result.payload.get("gates"),
         "edgeAttribution": mc_result.payload.get("edge_attribution"),
         "breakevens": mc_result.payload.get("breakevens"),
