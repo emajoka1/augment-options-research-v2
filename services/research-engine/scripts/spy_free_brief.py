@@ -28,6 +28,7 @@ TRIGGER_LIVE_REFRESH = os.environ.get("SPY_TRIGGER_LIVE_REFRESH", "0").lower() i
 LIVE_SNAPSHOT_SCRIPT = os.environ.get("SPY_LIVE_SCRIPT", str(ROOT / "scripts" / "spy_live_snapshot.cjs"))
 DXLINK_CANDLES_SCRIPT = os.environ.get("DXLINK_CANDLES_SCRIPT", str(ROOT / "scripts" / "dxlink_candles.cjs"))
 DXLINK_CANDLE_OUT = os.environ.get("DXLINK_CANDLE_OUT", str(DXLINK_LIVE_PATHS.candles))
+DXLINK_DAILY_CLOSES_OUT = os.environ.get("DXLINK_DAILY_CLOSES_OUT", str(DXLINK_LIVE_PATHS.daily_closes))
 DXLINK_CANDLE_SYMBOL = os.environ.get("DXLINK_CANDLE_SYMBOL", "SPY{=5m}")
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_CLOSE_ET = dt_time(16, 0)
@@ -464,7 +465,16 @@ def build_candidates(rows):
 
 
 def _load_dxlink_candles() -> list[float]:
-    """Load SPY daily close prices from canonical dxlink candle snapshot."""
+    """Load SPY daily close prices from canonical daily-close file, with fallback collapse from intraday candles."""
+    daily_data = load_json_file(Path(DXLINK_DAILY_CLOSES_OUT)) or {}
+    closes_from_daily = []
+    for row in daily_data.get("closes") or []:
+        value = _to_float((row or {}).get("close"))
+        if value is not None and math.isfinite(value):
+            closes_from_daily.append(value)
+    if closes_from_daily:
+        return closes_from_daily
+
     data = load_json_file(Path(DXLINK_CANDLE_OUT)) or {}
     candles = data.get("candles") or []
     daily_closes: dict[str, tuple[int, float]] = {}

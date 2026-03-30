@@ -11,6 +11,7 @@ const CHAIN_PATH = process.env.DXLINK_CHAIN_PATH || process.env.SPY_CHAIN_PATH |
 const OUT_DIR = process.env.DXLINK_STREAM_OUT_DIR || DEFAULT_DATA_DIR;
 const SNAPSHOT_PATH = process.env.DXLINK_STREAM_SNAPSHOT_OUT || path.join(OUT_DIR, 'dxlink_live_snapshot.json');
 const CANDLES_PATH = process.env.DXLINK_STREAM_CANDLES_OUT || path.join(OUT_DIR, 'dxlink_live_candles.json');
+const DAILY_CLOSES_PATH = process.env.DXLINK_STREAM_DAILY_CLOSES_OUT || path.join(OUT_DIR, 'dxlink_daily_closes.json');
 const STATUS_PATH = process.env.DXLINK_STREAM_STATUS_OUT || path.join(OUT_DIR, 'dxlink_live_status.json');
 const AUTO_REFRESH = String(process.env.SPY_AUTO_REFRESH_TOKEN || '1') !== '0';
 const FETCH_SCRIPT = process.env.SPY_FETCH_QUOTE_TOKEN_SCRIPT || path.join(__dirname, 'fetch_tasty_live_quote_token.py');
@@ -230,9 +231,10 @@ async function main() {
   let activeCandleSymbol = buildCandleSymbol(UNDERLYING_SYMBOL);
   let shouldStop = false;
 
-  function flushOutputs() {
+function flushOutputs() {
     const now = Date.now();
     const candleRows = [...candlesByTime.values()].sort((a, b) => a.time - b.time);
+    const dailyCloseRows = buildDailyCloseRows(candleRows);
     const snapshot = {
       source: 'dxlink-stream-daemon',
       generatedAt: new Date().toISOString(),
@@ -247,6 +249,13 @@ async function main() {
       lookbackMs: CANDLE_LOOKBACK_MS,
       candles: candleRows,
       realizedVol: computeRealizedVol(candleRows),
+    };
+    const dailyCloses = {
+      source: 'dxlink-stream-daemon',
+      generatedAt: new Date().toISOString(),
+      symbol: activeCandleSymbol,
+      timezone: MARKET_TZ,
+      closes: dailyCloseRows,
     };
     const status = {
       source: 'dxlink-stream-daemon',
@@ -266,6 +275,7 @@ async function main() {
       outputFiles: {
         snapshot: SNAPSHOT_PATH,
         candles: CANDLES_PATH,
+        dailyCloses: DAILY_CLOSES_PATH,
         status: STATUS_PATH,
       },
       quoteToken: state.quoteToken,
@@ -285,6 +295,7 @@ async function main() {
     };
     writeJsonAtomic(SNAPSHOT_PATH, snapshot);
     writeJsonAtomic(CANDLES_PATH, candles);
+    writeJsonAtomic(DAILY_CLOSES_PATH, dailyCloses);
     writeJsonAtomic(STATUS_PATH, status);
     state.lastFlushAt = status.generatedAt;
     if (STATUS_STDOUT) {
@@ -331,6 +342,22 @@ async function main() {
       annualized: Math.sqrt(variance) * Math.sqrt(periodsPerYear),
       period: CANDLE_WIDTH,
     };
+  }
+
+  function buildDailyCloseRows(candles) {
+    const byDay = new Map();
+    const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: MARKET_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+    for (const row of candles) {
+      const close = Number(row.close);
+      const ts = Number(row.time);
+      if (!Number.isFinite(close) || !Number.isFinite(ts)) continue;
+      const day = formatter.format(new Date(ts));
+      const existing = byDay.get(day);
+      if (!existing || ts > existing.time) {
+        byDay.set(day, { date: day, time: ts, close });
+      }
+    }
+    return [...byDay.values()].sort((a, b) => a.time - b.time);
   }
 
   function noteEvent() {

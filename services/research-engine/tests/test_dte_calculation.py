@@ -168,6 +168,23 @@ def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkey
     assert closes == [101.0, 102.0, 103.0]
 
 
+def test_load_dxlink_candles_prefers_daily_close_file(tmp_path, monkeypatch):
+    daily_path = tmp_path / 'dxlink_daily_closes.json'
+    candle_path = tmp_path / 'dxlink_live_candles.json'
+    daily_path.write_text(json.dumps({'closes': [
+        {'date': '2026-03-10', 'close': 101.0},
+        {'date': '2026-03-11', 'close': 102.0},
+        {'date': '2026-03-12', 'close': 103.0},
+    ]}))
+    candle_path.write_text(json.dumps({'candles': [
+        {'time': 1770000000000, 'close': 999.0},
+    ]}))
+    monkeypatch.setattr(sfb, 'DXLINK_DAILY_CLOSES_OUT', str(daily_path))
+    monkeypatch.setattr(sfb, 'DXLINK_CANDLE_OUT', str(candle_path))
+    closes = sfb._load_dxlink_candles()
+    assert closes == [101.0, 102.0, 103.0]
+
+
 def test_ann_realized_vol_matches_annualized_log_return_formula():
     closes = [100, 101, 99, 102, 101, 103, 102, 104, 103, 105, 104]
     rv10 = sfb.ann_realized_vol(closes, 10)
