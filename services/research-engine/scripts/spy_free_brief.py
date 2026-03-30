@@ -599,6 +599,59 @@ def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, s
     return {}
 
 
+def identify_dominant_risk(dte, net_gamma, net_theta, net_vega):
+    if dte <= 3:
+        return 'GAMMA'
+    if dte <= 14:
+        return 'THETA'
+    return 'VEGA'
+
+
+def classify_gamma_risk(net_gamma, dte, spot):
+    gamma_dollar = abs(net_gamma) * spot * spot * 0.01
+    if dte <= 1 and gamma_dollar > 50:
+        return 'EXTREME'
+    if dte <= 3 and gamma_dollar > 30:
+        return 'HIGH'
+    if gamma_dollar > 15:
+        return 'MODERATE'
+    return 'LOW'
+
+
+def compute_position_greeks(legs, spot, dte, entry_cost=0.0):
+    net_delta = 0.0
+    net_gamma = 0.0
+    net_theta = 0.0
+    net_vega = 0.0
+    for leg in legs:
+        action = leg.get('action', 'buy')
+        sign = 1.0 if action == 'buy' else -1.0
+        delta = _to_float(leg.get('delta')) or 0.0
+        gamma = _to_float(leg.get('gamma')) or 0.0
+        theta = _to_float(leg.get('theta')) or 0.0
+        vega = _to_float(leg.get('vega')) or 0.0
+        net_delta += delta * sign * 100.0
+        net_gamma += gamma * sign * 100.0
+        net_theta += theta * sign * 100.0
+        net_vega += vega * sign * 100.0
+
+    theta_per_day = round(net_theta, 2)
+    days_to_breakeven = round(abs(entry_cost / net_theta), 1) if net_theta not in (0, None) else None
+    dominant = identify_dominant_risk(dte, net_gamma, net_theta, net_vega)
+    return {
+        'netDelta': round(net_delta, 2),
+        'netDeltaDollars': round(net_delta * spot, 2),
+        'netGamma': round(net_gamma, 6),
+        'gammaRisk': classify_gamma_risk(net_gamma, dte, spot),
+        'netTheta': round(net_theta, 2),
+        'thetaPerDay': theta_per_day,
+        'daysToBreakeven': days_to_breakeven,
+        'netVega': round(net_vega, 2),
+        'vegaDollarImpact': round(net_vega * 0.01, 2),
+        'dominantRiskFactor': dominant,
+    }
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -1318,6 +1371,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         decision = "PASS"
 
     final_score = compute_final_score(score, gates)
+    greek_entry_cost = debit if candidate_type == 'debit' else credit
+    greeks = compute_position_greeks(leg_defs, spot, dte, entry_cost=greek_entry_cost)
 
     counterfactuals = build_counterfactuals(candidate_type, legs, ticket, {
         "value": round(em, 2) if em else None,
@@ -1326,10 +1381,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
     }, spot, context)
 
     structure_legs = []
-    for leg in legs:
+    for leg, leg_def in zip(legs, leg_defs):
         structure_legs.append({
             "symbol": leg.get("symbol"),
             "side": leg.get("side"),
+            "action": leg_def.get("action"),
             "expiry": leg.get("expiry"),
             "dte": leg.get("dte"),
             "strike": leg.get("strike"),
@@ -1337,6 +1393,9 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "bid": leg.get("bid"),
             "ask": leg.get("ask"),
             "delta": leg.get("delta"),
+            "gamma": leg.get("gamma"),
+            "theta": leg.get("theta"),
+            "vega": leg.get("vega"),
             "iv": leg.get("iv"),
             "openInterest": leg.get("openInterest"),
             "dayVolume": leg.get("dayVolume"),
@@ -1371,6 +1430,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         "decision": decision,
         "gateFailures": gates,
         "directionalAlignment": directional_alignment,
+        "greeks": greeks,
         "maxLossPerContract": round(max_loss, 2),
         "structure": {
             "name": candidate_type,

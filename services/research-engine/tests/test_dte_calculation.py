@@ -433,6 +433,18 @@ def test_build_counterfactuals_credit_is_strategy_specific():
     assert 'Full max loss of $1271.0 below 595.0.' in out['priceInvalidation']
 
 
+def test_compute_position_greeks_surfaces_dominant_risk_and_gamma_class():
+    legs = [
+        {'action': 'buy', 'delta': 0.40, 'gamma': 0.02, 'theta': -0.05, 'vega': 0.12},
+        {'action': 'sell', 'delta': 0.20, 'gamma': 0.01, 'theta': -0.03, 'vega': 0.08},
+    ]
+    out = sfb.compute_position_greeks(legs, 636.0, 1, entry_cost=5.5)
+    assert out['netDelta'] == 20.0
+    assert out['dominantRiskFactor'] == 'GAMMA'
+    assert out['gammaRisk'] in {'LOW', 'MODERATE', 'HIGH', 'EXTREME'}
+    assert 'vegaDollarImpact' in out
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
