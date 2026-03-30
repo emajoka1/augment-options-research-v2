@@ -32,6 +32,7 @@ DXLINK_CANDLE_OUT = os.environ.get("DXLINK_CANDLE_OUT", str(DXLINK_LIVE_PATHS.ca
 DXLINK_DAILY_CLOSES_OUT = os.environ.get("DXLINK_DAILY_CLOSES_OUT", str(DXLINK_LIVE_PATHS.daily_closes))
 DXLINK_DAILY_BACKFILL_SCRIPT = os.environ.get("DXLINK_DAILY_BACKFILL_SCRIPT", str(ROOT / "scripts" / "backfill_daily_closes.py"))
 DXLINK_CANDLE_SYMBOL = os.environ.get("DXLINK_CANDLE_SYMBOL", "SPY{=5m}")
+PORTFOLIO_CONTEXT_PATH = os.environ.get("SPY_PORTFOLIO_CONTEXT_PATH", str(ROOT / "data" / "portfolio_context.json"))
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_CLOSE_ET = dt_time(16, 0)
 
@@ -678,6 +679,56 @@ def enrich_leg_greeks(leg, spot, dte, r=0.03, q=0.013):
         except Exception:
             pass
     return enriched
+
+
+def is_highly_correlated(underlying_a, underlying_b):
+    a = str(underlying_a or '').upper()
+    b = str(underlying_b or '').upper()
+    if a == b:
+        return True
+    corr_clusters = [
+        {'SPY', 'SPX', 'ES', 'QQQ', 'IWM'},
+    ]
+    return any(a in cluster and b in cluster for cluster in corr_clusters)
+
+
+def load_portfolio_context(path=PORTFOLIO_CONTEXT_PATH):
+    p = Path(path)
+    if not p.exists():
+        return None
+    return load_json_file(p)
+
+
+def evaluate_portfolio_context(new_trade, existing_positions, portfolio_value):
+    current_delta = sum(float(p.get('net_delta', 0.0)) for p in existing_positions)
+    new_delta = current_delta + float(new_trade.get('net_delta', 0.0))
+    spy_exposure = sum(abs(float(p.get('notional', 0.0))) for p in existing_positions if str(p.get('underlying', '')).upper() == 'SPY')
+    new_spy_exposure = spy_exposure + abs(float(new_trade.get('notional', 0.0)))
+    concentration_pct = (new_spy_exposure / portfolio_value) if portfolio_value else None
+    correlated_risk = sum(
+        float(p.get('max_loss', 0.0)) for p in existing_positions
+        if p.get('underlying') == new_trade.get('underlying') or is_highly_correlated(p.get('underlying'), new_trade.get('underlying'))
+    )
+    total_risk = sum(float(p.get('max_loss', 0.0)) for p in existing_positions) + float(new_trade.get('max_loss', 0.0))
+    portfolio_risk_pct = (total_risk / portfolio_value) if portfolio_value else None
+
+    warnings = []
+    if concentration_pct is not None and concentration_pct > 0.30:
+        warnings.append(f'SPY concentration would rise to {round(concentration_pct*100,1)}% of portfolio value')
+    if portfolio_risk_pct is not None and portfolio_risk_pct > 0.05:
+        warnings.append(f'Total defined risk would reach {round(portfolio_risk_pct*100,1)}% of portfolio value')
+    if abs(new_delta - current_delta) > 50:
+        warnings.append(f'Portfolio delta would shift by {round(new_delta - current_delta,2)}')
+
+    return {
+        'currentDelta': round(current_delta, 2),
+        'newDelta': round(new_delta, 2),
+        'deltaShift': round(new_delta - current_delta, 2),
+        'concentrationPct': round(concentration_pct, 4) if concentration_pct is not None else None,
+        'correlatedRisk': round(correlated_risk, 2),
+        'totalPortfolioRisk': round(portfolio_risk_pct, 4) if portfolio_risk_pct is not None else None,
+        'warnings': warnings,
+    }
 
 
 def expected_move(spot, iv, dte):
@@ -1402,6 +1453,28 @@ def build_trade(candidate_type, legs, spot, vol, context):
     final_score = compute_final_score(score, gates)
     greek_entry_cost = debit if candidate_type == 'debit' else credit
     greeks = compute_position_greeks(enriched_leg_defs, spot, dte, entry_cost=greek_entry_cost)
+    portfolio_context_raw = load_portfolio_context()
+    if portfolio_context_raw and isinstance(portfolio_context_raw, dict):
+        portfolio_context = evaluate_portfolio_context(
+            {
+                'underlying': 'SPY',
+                'net_delta': greeks.get('netDelta', 0.0),
+                'notional': greeks.get('netDeltaDollars', 0.0),
+                'max_loss': round(max_loss, 2),
+            },
+            portfolio_context_raw.get('positions', []) or [],
+            float(portfolio_context_raw.get('portfolioValue', 0.0) or 0.0),
+        )
+    else:
+        portfolio_context = {
+            'currentDelta': None,
+            'newDelta': None,
+            'deltaShift': None,
+            'concentrationPct': None,
+            'correlatedRisk': None,
+            'totalPortfolioRisk': None,
+            'warnings': ['Portfolio context unavailable — this trade is evaluated in isolation. Risk of over-concentration is not assessed.'],
+        }
 
     counterfactuals = build_counterfactuals(candidate_type, legs, ticket, {
         "value": round(em, 2) if em else None,
@@ -1460,6 +1533,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         "gateFailures": gates,
         "directionalAlignment": directional_alignment,
         "greeks": greeks,
+        "portfolioContext": portfolio_context,
         "maxLossPerContract": round(max_loss, 2),
         "structure": {
             "name": candidate_type,

@@ -453,6 +453,24 @@ def test_enrich_leg_greeks_backfills_missing_values_from_bsm():
     assert out['vega'] is not None
 
 
+def test_evaluate_portfolio_context_computes_delta_and_risk_shift():
+    new_trade = {'underlying': 'SPY', 'net_delta': 20.0, 'notional': 12000.0, 'max_loss': 500.0}
+    existing = [
+        {'underlying': 'SPY', 'net_delta': -10.0, 'notional': 10000.0, 'max_loss': 400.0},
+        {'underlying': 'QQQ', 'net_delta': 5.0, 'notional': 8000.0, 'max_loss': 300.0},
+    ]
+    out = sfb.evaluate_portfolio_context(new_trade, existing, 100000.0)
+    assert out['currentDelta'] == -5.0
+    assert out['newDelta'] == 15.0
+    assert out['deltaShift'] == 20.0
+    assert out['correlatedRisk'] == 700.0
+
+
+def test_portfolio_context_fallback_warning_when_unavailable():
+    data = sfb.load_portfolio_context('/tmp/definitely_missing_portfolio_context.json')
+    assert data is None
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
