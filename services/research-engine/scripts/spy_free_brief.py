@@ -152,7 +152,9 @@ def ann_realized_vol(closes, window=10):
     w = rets[-window:]
     mean = sum(w) / len(w)
     var = sum((x - mean) ** 2 for x in w) / max(1, len(w) - 1)
-    return math.sqrt(var) * math.sqrt(252)
+    rv = math.sqrt(var) * math.sqrt(252)
+    assert 0.01 <= rv <= 2.00, f"rv{window} {rv} outside valid range"
+    return rv
 
 
 def spread_pct(row):
@@ -462,10 +464,11 @@ def build_candidates(rows):
 
 
 def _load_dxlink_candles() -> list[float]:
-    """Load SPY close prices from canonical dxlink candle snapshot."""
+    """Load SPY daily close prices from canonical dxlink candle snapshot."""
     data = load_json_file(Path(DXLINK_CANDLE_OUT)) or {}
     candles = data.get("candles") or []
-    closes: list[float] = []
+    daily_closes: dict[str, tuple[int, float]] = {}
+    now_utc = datetime.now(timezone.utc)
     for candle in candles:
         raw = candle.get("close")
         if raw in (None, ""):
@@ -476,8 +479,19 @@ def _load_dxlink_candles() -> list[float]:
             continue
         if not math.isfinite(value):
             continue
-        closes.append(value)
-    return closes
+        ts = candle.get("time")
+        if not isinstance(ts, (int, float)):
+            continue
+        dt_utc = datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc)
+        if dt_utc > now_utc + timedelta(minutes=5):
+            continue
+        dt_et = dt_utc.astimezone(MARKET_TZ)
+        day_key = dt_et.date().isoformat()
+        existing = daily_closes.get(day_key)
+        if existing is None or ts > existing[0]:
+            daily_closes[day_key] = (int(ts), value)
+    ordered_days = sorted(daily_closes)
+    return [daily_closes[day][1] for day in ordered_days]
 
 
 def regime_snapshot(spot):
@@ -501,6 +515,10 @@ def regime_snapshot(spot):
 
     rv10 = ann_realized_vol(closes, 10)
     rv20 = ann_realized_vol(closes, 20)
+
+    if rv10 is not None and rv20 is not None:
+        ratio = rv10 / rv20 if rv20 else None
+        assert ratio is None or 0.5 <= ratio <= 2.0, f"rv10/rv20 ratio {ratio} is extreme"
 
     return {
         "ticker": "SPY",

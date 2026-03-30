@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import json
 
 import scripts.spy_free_brief as sfb
 
@@ -150,3 +151,25 @@ def test_vol_state_ivcurrent_within_leg_band():
     assert 0.05 <= vol['ivCurrent'] <= 1.50
     assert 0.23 <= vol['ivCurrent'] <= 0.35
     assert 0.5 <= vol['classifier']['ivRvRatio'] <= 10.0
+
+
+def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
+    candle_path = tmp_path / 'dxlink_live_candles.json'
+    base = datetime(2026, 3, 10, 20, 0, tzinfo=timezone.utc)
+    candles = []
+    for day_index in range(3):
+        day = base + timedelta(days=day_index)
+        candles.append({'time': int(day.replace(hour=15, minute=0).timestamp() * 1000), 'close': 100 + day_index})
+        candles.append({'time': int(day.replace(hour=20, minute=0).timestamp() * 1000), 'close': 101 + day_index})
+    candles.append({'time': 2147483648023, 'close': 'NaN'})
+    candle_path.write_text(json.dumps({'candles': candles}))
+    monkeypatch.setattr(sfb, 'DXLINK_CANDLE_OUT', str(candle_path))
+    closes = sfb._load_dxlink_candles()
+    assert closes == [101.0, 102.0, 103.0]
+
+
+def test_ann_realized_vol_matches_annualized_log_return_formula():
+    closes = [100, 101, 99, 102, 101, 103, 102, 104, 103, 105, 104]
+    rv10 = sfb.ann_realized_vol(closes, 10)
+    assert rv10 is not None
+    assert 0.01 <= rv10 <= 2.00
