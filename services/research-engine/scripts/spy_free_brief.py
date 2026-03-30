@@ -1320,7 +1320,7 @@ def _load_dxlink_candles() -> list[float]:
     return closes_from_daily if len(closes_from_daily) >= len(intraday_collapsed) else intraday_collapsed
 
 
-def regime_snapshot(spot):
+def regime_snapshot(spot, live=None):
     closes = _load_dxlink_candles()
 
     ma20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else None
@@ -1358,7 +1358,15 @@ def regime_snapshot(spot):
         except Exception:
             return None, 'unknown', None
 
-    vix_change, vix_dir, vix_observed_at = fetch_fred_day_change('VIXCLS')
+    vix_live = ((live or {}).get('vix') or {}) if isinstance(live, dict) else {}
+    vix_last = _to_float(vix_live.get('mark')) or _to_float(vix_live.get('last'))
+    vix_prev_close = _to_float(vix_live.get('prevDayClosePrice'))
+    if vix_last is not None and vix_prev_close is not None:
+        vix_change = float(vix_last - vix_prev_close)
+        vix_dir = 'up' if vix_change > 0 else ('down' if vix_change < 0 else 'flat')
+        vix_observed_at = datetime.now(timezone.utc).isoformat()
+    else:
+        vix_change, vix_dir, vix_observed_at = fetch_fred_day_change('VIXCLS')
     us10y_change, rates_dir, rates_observed_at = fetch_fred_day_change('DGS10')
 
     risk_regime = "Risk-on" if trend_up else "Neutral"
@@ -2212,7 +2220,7 @@ def generate_brief_payload():
 
     rows = watchlist_from_live(live) if live_fresh else []
 
-    context = regime_snapshot(spot)
+    context = regime_snapshot(spot, live)
     try:
         vol = vol_state(rows, context["realizedVol"].get("rv10"), context["realizedVol"].get("rv20"), spot=spot)
     except TypeError:

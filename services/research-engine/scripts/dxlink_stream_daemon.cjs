@@ -35,6 +35,7 @@ const CANDLE_LOOKBACK_MS = Number(process.env.DXLINK_CANDLE_LOOKBACK_MS || 3 * 2
 const STATUS_STDOUT = String(process.env.DXLINK_STATUS_STDOUT || '1') !== '0';
 const MARKET_TZ = 'America/New_York';
 const MARKET_CLOSE_HOUR_ET = 16;
+const VIX_SYMBOL = String(process.env.DXLINK_VIX_SYMBOL || 'VIX');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -187,6 +188,10 @@ async function main() {
       symbol: UNDERLYING_SYMBOL,
       streamerSymbol: UNDERLYING_SYMBOL,
     },
+    vix: {
+      symbol: 'VIX',
+      streamerSymbol: VIX_SYMBOL,
+    },
     quoteToken: {
       level: null,
       expiresAt: null,
@@ -239,6 +244,7 @@ function flushOutputs() {
       source: 'dxlink-stream-daemon',
       generatedAt: new Date().toISOString(),
       underlying: state.underlying,
+      vix: state.vix,
       optionRing: activeOptionSymbols.map((symbol) => contractMeta[symbol]).filter(Boolean),
       data: marketData,
     };
@@ -281,6 +287,7 @@ function flushOutputs() {
       quoteToken: state.quoteToken,
       feeds: state.feeds,
       underlying: state.underlying,
+      vix: state.vix,
       counts: {
         optionSymbols: activeOptionSymbols.length,
         symbolsWithData: Object.keys(marketData).length,
@@ -375,6 +382,27 @@ function flushOutputs() {
 
   function applyUnderlyingTrade(event) {
     if (Number.isFinite(event.price)) state.underlying.last = event.price;
+    noteEvent();
+  }
+
+  function applyVixQuote(event) {
+    state.vix.bid = event.bidPrice;
+    state.vix.ask = event.askPrice;
+    const mark = midpoint(event.bidPrice, event.askPrice);
+    if (Number.isFinite(mark)) state.vix.mark = mark;
+    noteEvent();
+  }
+
+  function applyVixTrade(event) {
+    if (Number.isFinite(event.price)) state.vix.last = event.price;
+    noteEvent();
+  }
+
+  function applyVixSummary(event) {
+    if (Number.isFinite(event.prevDayClosePrice)) state.vix.prevDayClosePrice = event.prevDayClosePrice;
+    if (Number.isFinite(event.dayOpenPrice)) state.vix.dayOpenPrice = event.dayOpenPrice;
+    if (Number.isFinite(event.dayHighPrice)) state.vix.dayHighPrice = event.dayHighPrice;
+    if (Number.isFinite(event.dayLowPrice)) state.vix.dayLowPrice = event.dayLowPrice;
     noteEvent();
   }
 
@@ -548,6 +576,18 @@ function flushOutputs() {
           applyUnderlyingTrade(event);
           continue;
         }
+        if (event.eventSymbol === state.vix.streamerSymbol && event.eventType === 'Quote') {
+          applyVixQuote(event);
+          continue;
+        }
+        if (event.eventSymbol === state.vix.streamerSymbol && event.eventType === 'Trade') {
+          applyVixTrade(event);
+          continue;
+        }
+        if (event.eventSymbol === state.vix.streamerSymbol && event.eventType === 'Summary') {
+          applyVixSummary(event);
+          continue;
+        }
         if (contractMeta[event.eventSymbol]) {
           applyOptionEvent(event);
         }
@@ -561,6 +601,9 @@ function flushOutputs() {
     await refreshRingSubscriptions(true);
     marketFeed.addSubscriptions({ type: 'Quote', symbol: activeUnderlyingSymbol });
     marketFeed.addSubscriptions({ type: 'Trade', symbol: activeUnderlyingSymbol });
+    marketFeed.addSubscriptions({ type: 'Quote', symbol: state.vix.streamerSymbol });
+    marketFeed.addSubscriptions({ type: 'Trade', symbol: state.vix.streamerSymbol });
+    marketFeed.addSubscriptions({ type: 'Summary', symbol: state.vix.streamerSymbol });
 
     while (!shouldStop) {
       updateHealth();
