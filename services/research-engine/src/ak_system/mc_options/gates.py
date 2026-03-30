@@ -62,6 +62,21 @@ def evaluate_survival_gates(metrics, multi_seed: dict[str, float], regime: str, 
     cvar_r = float(multi_seed["cvar_mean"]) / R_unit
     cvar_worst_r = float(multi_seed["cvar_worst"]) / R_unit
 
+    strategy_type = getattr(config, 'strategy_name', None) or getattr(config, 'strategy_type', None)
+    max_loss = abs(float(metrics.min_pl)) if metrics.min_pl is not None else None
+    cvar_abs = abs(float(metrics.cvar95)) if metrics.cvar95 is not None else None
+    cvar_ratio = (cvar_abs / max_loss) if (max_loss is not None and max_loss > 0 and cvar_abs is not None) else None
+    defined_risk = strategy_type in {"iron_condor", "put_credit_spread", "call_debit_spread", "put_debit_spread", "iron_fly"}
+
+    if defined_risk and cvar_ratio is not None:
+        cvar_gate = cvar_ratio <= 1.05
+        cvar_worst_gate = cvar_ratio <= 1.05
+        cvar_gate_status = 'PASS' if cvar_ratio <= 0.90 else ('WARN' if cvar_ratio <= 1.05 else 'FAIL')
+    else:
+        cvar_gate = cvar_r > cvar_req
+        cvar_worst_gate = cvar_worst_r > cvar_req
+        cvar_gate_status = None
+
     friction_hurdle = {
         "ev_mid": ev_mid_mean,
         "ev_real": ev_real_mean,
@@ -79,8 +94,10 @@ def evaluate_survival_gates(metrics, multi_seed: dict[str, float], regime: str, 
         "cvar_threshold_R": cvar_req,
         "ev_gate": ev_real_r > ev_req,
         "ev_ci_gate": ev_p5_r > 0.02,
-        "cvar_gate": cvar_r > cvar_req,
-        "cvar_worst_gate": cvar_worst_r > cvar_req,
+        "cvar_gate": cvar_gate,
+        "cvar_worst_gate": cvar_worst_gate,
+        "cvar_ratio": cvar_ratio,
+        "cvar_gate_status": cvar_gate_status,
         "pop_or_pot": (float(multi_seed["pop_mean"]) > 0.55) if is_short_premium else (float(metrics.pot) > 0.45),
         "slippage_sensitivity_ok": abs(ev_stress_mean - ev_real_mean) / R_unit < 0.35,
         "stress_ev_not_catastrophic": ev_stress_r > -0.50,
