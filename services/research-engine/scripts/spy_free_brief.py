@@ -653,7 +653,7 @@ def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, s
     rv20 = (context.get('realizedVol') or {}).get('rv20')
     rv_current = max(v for v in [rv10, rv20] if v is not None) if any(v is not None for v in [rv10, rv20]) else None
     iv_current = _to_float((expected_move_payload or {}).get('ivUsed'))
-    theta_per_day = _to_float((greeks or {}).get('thetaPerDay'))
+    theta_per_day = abs(_to_float((greeks or {}).get('thetaPerDay')) or 0.0) if (greeks or {}).get('thetaPerDay') is not None else None
     breakeven_days = max(1, round(dte / 2)) if dte not in (None, 999) else None
 
     if candidate_type == 'condor' and len(legs) >= 4:
