@@ -338,6 +338,24 @@ def test_validate_pot_flags_unrealistic_short_premium_target():
     assert out['flag'] == 'target_unrealistic'
 
 
+def test_validate_mc_inputs_blocks_invalid_unit_errors():
+    legs = [
+        {'symbol': 'L1', 'iv': 6.89, 'delta': 0.2, 'bid': 1.0, 'ask': 1.1},
+    ]
+    out = sfb.validate_mc_inputs(636.0, 6.89, 0.15, 37, legs, 'condor')
+    assert out['valid'] is False
+    assert any('IV is 6.89' in e for e in out['errors'])
+
+
+def test_validate_mc_inputs_warns_on_zero_dte_but_can_proceed():
+    legs = [
+        {'symbol': 'L1', 'iv': 0.30, 'delta': 0.2, 'bid': 1.0, 'ask': 1.1},
+    ]
+    out = sfb.validate_mc_inputs(636.0, 0.30, 0.15, 0, legs, 'condor')
+    assert out['valid'] is True
+    assert any('DTE is 0' in w for w in out['warnings'])
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'

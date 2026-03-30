@@ -81,6 +81,7 @@ def test_attach_mc_decision_uses_mc_engine_as_decision_source(monkeypatch):
             return FakeResult()
 
     monkeypatch.setattr(sfb, "MCEngine", lambda: FakeEngine())
+    monkeypatch.setattr(sfb, "_load_dxlink_candles", lambda: [100, 101, 102, 101, 103, 104, 103, 105, 104, 106, 107])
     out = sfb.attach_mc_decision(candidate, legs, 500.0)
     assert out["decisionSource"] == "mc_engine"
     assert out["decision"] == "TRADE"

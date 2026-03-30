@@ -420,6 +420,68 @@ def validate_pot(pop, pot, strategy_type):
     return None
 
 
+def validate_mc_inputs(spot, iv, rv, dte, legs, strategy_type):
+    errors = []
+    warnings = []
+
+    if dte < 0:
+        errors.append(f"DTE is negative ({dte})")
+    if dte == 0:
+        warnings.append("DTE is 0 — expiry today, consider assignment risk")
+    if dte > 365:
+        warnings.append(f"DTE is {dte} — unusually long for this strategy")
+
+    if iv is None or iv <= 0:
+        errors.append(f"IV is non-positive ({iv})")
+    elif iv > 2.0:
+        errors.append(f"IV is {iv} — likely a unit error (should be decimal, e.g., 0.30)")
+    elif iv < 0.05:
+        warnings.append(f"IV is {iv} — unusually low, verify data source")
+
+    if rv is None:
+        warnings.append("RV is missing — proceed with caution")
+    elif rv <= 0:
+        errors.append(f"RV is non-positive ({rv})")
+    elif rv > 2.0:
+        errors.append(f"RV is {rv} — likely a unit error")
+
+    ratio = (iv / rv) if (iv is not None and rv not in (None, 0)) else None
+    if ratio is not None and ratio > 10.0:
+        errors.append(f"IV/RV ratio is {ratio:.1f} — likely a unit mismatch")
+
+    for leg in legs:
+        leg_iv = _to_float(leg.get('iv'))
+        leg_delta = _to_float(leg.get('delta'))
+        bid = _to_float(leg.get('bid'))
+        ask = _to_float(leg.get('ask'))
+        if leg_iv is not None and leg_iv > 2.0:
+            errors.append(f"Leg {leg.get('symbol')} IV is {leg_iv} — unit error")
+        if leg_delta is not None and abs(leg_delta) > 1.0:
+            errors.append(f"Leg {leg.get('symbol')} delta is {leg_delta} — impossible")
+        if bid is not None and ask is not None and bid > ask:
+            errors.append(f"Leg {leg.get('symbol')} bid ({bid}) > ask ({ask})")
+        if bid is not None and bid < 0:
+            errors.append(f"Leg {leg.get('symbol')} has negative bid")
+
+    em = None
+    if spot and iv and dte is not None:
+        try:
+            em = expected_move(spot, iv, dte)
+        except AssertionError as exc:
+            errors.append(str(exc))
+    if em is not None and em > spot * 0.5:
+        errors.append(f"Expected move ({em:.2f}) > 50% of spot — check IV and DTE")
+    if em is not None and em <= 0:
+        errors.append(f"Expected move is non-positive ({em:.2f})")
+
+    return {
+        'valid': len(errors) == 0,
+        'errors': errors,
+        'warnings': warnings,
+        'proceed': len(errors) == 0,
+    }
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -1237,6 +1299,12 @@ def attach_mc_decision(candidate, legs, spot):
 
     dte = min((l.get("dte") or 999) for l in legs if l is not None)
     strategy_type = {"debit": "call_debit_spread", "credit": "put_credit_spread", "condor": "iron_condor"}[candidate["type"]]
+    iv = (candidate.get("expectedMove") or {}).get("ivUsed")
+    if iv is None:
+        for leg in legs:
+            iv = _to_float(leg.get("iv"))
+            if iv is not None:
+                break
 
     live = load_live(LIVE_PATH) or {}
     rows = watchlist_from_live(live) if isinstance(live, dict) else []
@@ -1246,6 +1314,41 @@ def attach_mc_decision(candidate, legs, spot):
         for a, b in zip(closes[:-1], closes[1:]):
             if a and b and a > 0 and b > 0:
                 returns.append(math.log(b / a))
+
+    rv = ann_realized_vol(closes, 10)
+    mc_validation = validate_mc_inputs(float(spot), _to_float(iv), rv, int(dte), legs, candidate.get("type"))
+    if not mc_validation['valid']:
+        candidate["decisionSource"] = "mc_engine"
+        candidate["decision"] = "PASS"
+        candidate.setdefault("gateFailures", [])
+        candidate["gateFailures"] = [g for g in candidate["gateFailures"] if not str(g).startswith('mc:')] + ['mc:blocked_invalid_inputs']
+        candidate["mc"] = {
+            "status": "BLOCKED_INVALID_INPUTS",
+            "allowTrade": False,
+            "dataQualityStatus": "BLOCKED_INVALID_INPUTS",
+            "metrics": None,
+            "multiSeedConfidence": None,
+            "gates": {"allow_trade": False, "blocked_invalid_inputs": True},
+            "edgeAttribution": None,
+            "breakevens": None,
+            "strategy": strategy_type,
+            "inputValidation": mc_validation,
+        }
+        score = candidate.get("score") or {}
+        rescored = compute_final_score(score, candidate.get("gateFailures") or [])
+        candidate["score"] = {
+            **score,
+            "RawTotal": rescored["rawTotal"],
+            "Total": rescored["adjustedTotal"],
+            "AdjustedTotal": rescored["adjustedTotal"],
+            "GatePenalty": rescored["gatePenalty"],
+            "GatesPassed": rescored["gatesPassed"],
+            "CriticalGateCount": rescored["criticalGateCount"],
+            "WarningGateCount": rescored["warningGateCount"],
+            "DisplayText": f"{rescored['adjustedTotal']} (raw: {rescored['rawTotal']}, penalized for {len(candidate.get('gateFailures') or [])} gate failures)" if rescored["gatePenalty"] > 0 else str(rescored["adjustedTotal"]),
+            "Color": "green" if rescored["adjustedTotal"] >= 70 else ("amber" if rescored["adjustedTotal"] >= 50 else "red"),
+        }
+        return candidate
 
     snapshot_payload = {
         "spot": float(spot),
@@ -1294,13 +1397,14 @@ def attach_mc_decision(candidate, legs, spot):
         "edgeAttribution": mc_result.payload.get("edge_attribution"),
         "breakevens": mc_result.payload.get("breakevens"),
         "strategy": mc_result.payload.get("assumptions", {}).get("strategy"),
+        "inputValidation": mc_validation,
     }
-    candidate["decision"] = "TRADE" if mc_result.allow_trade else "PASS"
 
     mc_gates = mc_result.payload.get("gates") or {}
     failed_mc_gates = sorted([f"mc:{k}" for k, v in mc_gates.items() if k != "allow_trade" and v is False])
     existing = [g for g in (candidate.get("gateFailures") or []) if not g.startswith("mc:")]
     candidate["gateFailures"] = existing if mc_result.allow_trade else (existing + failed_mc_gates or existing)
+    candidate["decision"] = "TRADE" if mc_result.allow_trade else "PASS"
 
     target_validation = validate_pot(
         (mc_result.payload.get("metrics") or {}).get("pop"),
