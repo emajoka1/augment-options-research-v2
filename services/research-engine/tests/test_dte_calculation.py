@@ -282,6 +282,22 @@ def test_regime_score_recalibration_debit_neutral_down_flat_one_third_quality():
     assert score['Regime'] == 3
 
 
+def test_vol_edge_score_condor_elevated_iv_is_good():
+    score = sfb.compute_vol_edge_score(0.29, 0.15, 0.14, 'condor', max_score=20)
+    assert score == 16
+
+
+def test_vol_edge_score_debit_elevated_iv_is_poor():
+    score = sfb.compute_vol_edge_score(0.29, 0.15, 0.14, 'debit', max_score=20)
+    assert score == 2
+
+
+def test_classify_vol_regime_recalibrated_elevated_vol():
+    out = sfb.classify_vol_regime(0.29, 0.15, 0.14, None, None)
+    assert out['regime'] == 'ELEVATED_VOL'
+    assert 1.8 <= out['ivRvRatio'] <= 2.0
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'

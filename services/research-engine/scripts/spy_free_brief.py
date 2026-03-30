@@ -718,9 +718,41 @@ def compute_data_quality_factor(regime_data: dict) -> dict:
     }
 
 
-def classify_vol_regime(current_iv, rv10, rv20, term_front_back, skew_put_call):
-    base_rv = rv20 or rv10
-    if current_iv is None or base_rv is None:
+def compute_vol_edge_score(iv_current, rv10, rv20, strategy_type, max_score=20):
+    rv_best = max(v for v in [rv10, rv20] if v is not None) if any(v is not None for v in [rv10, rv20]) else None
+    if iv_current is None or rv_best is None or rv_best <= 0:
+        return 10
+    iv_rv_ratio = iv_current / rv_best
+
+    if strategy_type in ("condor", "credit"):
+        if iv_rv_ratio >= 2.0:
+            raw = 1.0
+        elif iv_rv_ratio >= 1.5:
+            raw = 0.8
+        elif iv_rv_ratio >= 1.2:
+            raw = 0.6
+        elif iv_rv_ratio >= 1.0:
+            raw = 0.4
+        else:
+            raw = 0.15
+    elif strategy_type == "debit":
+        if iv_rv_ratio <= 0.8:
+            raw = 1.0
+        elif iv_rv_ratio <= 1.0:
+            raw = 0.7
+        elif iv_rv_ratio <= 1.3:
+            raw = 0.4
+        else:
+            raw = 0.1
+    else:
+        raw = 0.5
+
+    return round(raw * max_score)
+
+
+def classify_vol_regime(current_iv, rv10, rv20, term_front_back, skew_put_call, iv_rank_proxy=None):
+    base_rv = rv10 if rv10 is not None else rv20
+    if current_iv is None or base_rv is None or base_rv <= 0:
         return {
             "regime": "UNCLEAR",
             "ivRvRatio": None,
@@ -729,17 +761,15 @@ def classify_vol_regime(current_iv, rv10, rv20, term_front_back, skew_put_call):
             "explanation": "Missing IV or RV metrics"
         }
 
-    iv_rv_ratio = current_iv / base_rv if base_rv > 0 else None
-    if iv_rv_ratio is None:
-        regime = "UNCLEAR"
-    elif iv_rv_ratio < 0.90:
-        regime = "LOW_VOL_UNDERPRICED"
-    elif iv_rv_ratio <= 1.10:
-        regime = "FAIR_VOL"
-    elif iv_rv_ratio <= 1.35:
-        regime = "RICH_VOL"
+    iv_rv_ratio = current_iv / base_rv
+    if iv_rv_ratio > 3.0 or (iv_rank_proxy is not None and iv_rank_proxy > 80):
+        regime = "HIGH_VOL"
+    elif iv_rv_ratio > 1.8 or (iv_rank_proxy is not None and iv_rank_proxy > 50):
+        regime = "ELEVATED_VOL"
+    elif iv_rv_ratio > 1.0:
+        regime = "NORMAL_VOL"
     else:
-        regime = "EXTREME_VOL"
+        regime = "LOW_VOL"
 
     if term_front_back is None:
         term_state = "unknown"
@@ -785,10 +815,10 @@ def vol_state(rows, rv10, rv20, spot=None):
 
     classifier = classify_vol_regime(current_iv, rv10, rv20, term, skew)
     vol_label = {
-        "LOW_VOL_UNDERPRICED": "cheap",
-        "FAIR_VOL": "fair",
-        "RICH_VOL": "expensive",
-        "EXTREME_VOL": "expensive",
+        "LOW_VOL": "cheap",
+        "NORMAL_VOL": "fair",
+        "ELEVATED_VOL": "expensive",
+        "HIGH_VOL": "expensive",
     }.get(classifier["regime"], "unknown")
 
     return {
@@ -824,17 +854,10 @@ def score_components(candidate, context, vol, exec_ok, event_ok):
     raw_regime_fit = int(round(25 * regime_match))
     regime_fit = int(round(raw_regime_fit * regime_quality["qualityFactor"]))
 
-    # B) Volatility Edge (25)
-    vol_edge_norm = 0.3
-    if vol_regime == "LOW_VOL_UNDERPRICED" and candidate["type"] == "debit":
-        vol_edge_norm = 0.95
-    elif vol_regime in ("RICH_VOL", "EXTREME_VOL") and candidate["type"] in ("credit", "condor"):
-        vol_edge_norm = 0.95
-    elif vol_regime == "FAIR_VOL":
-        vol_edge_norm = 0.55
-    if iv_rv is not None:
-        vol_edge_norm = _clip(vol_edge_norm * (1.0 if 0.75 <= iv_rv <= 1.6 else 0.8))
-    vol_edge = int(round(25 * vol_edge_norm))
+    # B) Volatility Edge (20)
+    realized_vol = context.get("realizedVol") or {}
+    vol_edge = compute_vol_edge_score(vol.get("ivCurrent"), realized_vol.get("rv10"), realized_vol.get("rv20"), candidate["type"], max_score=20)
+    vol_edge_norm = vol_edge / 20.0
 
     # C) Structure Quality (20)
     has_defined = 1.0 if candidate.get("maxLoss") and candidate.get("breakevens") else 0.0
