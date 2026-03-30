@@ -466,6 +466,25 @@ def test_evaluate_portfolio_context_computes_delta_and_risk_shift():
     assert out['correlatedRisk'] == 700.0
 
 
+def test_compute_liquidity_score_rates_liquid_spy_options_highly():
+    legs = [
+        {'symbol': 'A', 'openInterest': 12000, 'dayVolume': 6000, 'bid': 1.14, 'ask': 1.16},
+        {'symbol': 'B', 'openInterest': 8000, 'dayVolume': 2500, 'bid': 0.54, 'ask': 0.56},
+    ]
+    out = sfb.compute_liquidity_score(legs)
+    assert out['worstLeg'] >= 65
+    assert out['gate'] == 'PASS'
+
+
+def test_compute_liquidity_score_rejects_truly_illiquid_option():
+    legs = [
+        {'symbol': 'X', 'openInterest': 10, 'dayVolume': 0, 'bid': 0.0, 'ask': 0.5},
+    ]
+    out = sfb.compute_liquidity_score(legs)
+    assert out['worstLeg'] < 30
+    assert out['gate'] == 'FAIL'
+
+
 def test_portfolio_context_fallback_warning_when_unavailable():
     data = sfb.load_portfolio_context('/tmp/definitely_missing_portfolio_context.json')
     assert data is None

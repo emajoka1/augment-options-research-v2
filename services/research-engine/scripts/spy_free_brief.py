@@ -275,6 +275,81 @@ def compute_execution_quality(legs, leg_actions):
     }
 
 
+def compute_liquidity_score(legs):
+    scores = []
+    for leg in legs:
+        score = 0
+        oi = _to_int(leg.get('openInterest')) or 0
+        volume = _to_int(leg.get('dayVolume')) or 0
+        bid = _to_float(leg.get('bid')) or 0.0
+        ask = _to_float(leg.get('ask')) or 0.0
+        mid = (bid + ask) / 2.0 if (bid is not None and ask is not None) else 0.0
+        spread_pct = ((ask - bid) / mid * 100.0) if mid > 0 else 100.0
+
+        if oi > 10000:
+            score += 30
+        elif oi > 5000:
+            score += 25
+        elif oi > 1000:
+            score += 15
+        elif oi > 500:
+            score += 8
+
+        if volume > 5000:
+            score += 30
+        elif volume > 2000:
+            score += 25
+        elif volume > 500:
+            score += 15
+        elif volume > 100:
+            score += 8
+
+        if spread_pct < 1.0:
+            score += 25
+        elif spread_pct < 3.0:
+            score += 20
+        elif spread_pct < 5.0:
+            score += 12
+        elif spread_pct < 10.0:
+            score += 5
+
+        if bid > 0.05:
+            score += 15
+        elif bid > 0:
+            score += 8
+
+        label = 'excellent' if score >= 85 else 'good' if score >= 65 else 'fair' if score >= 45 else 'poor'
+        scores.append({
+            'symbol': leg.get('symbol'),
+            'score': score,
+            'label': label,
+            'openInterest': oi,
+            'dayVolume': volume,
+            'spreadPct': round(spread_pct, 2),
+            'bid': bid,
+        })
+
+    if not scores:
+        return {
+            'perLeg': [],
+            'worstLeg': 0,
+            'avgScore': 0.0,
+            'overallLabel': 'poor',
+            'gate': 'FAIL',
+        }
+
+    worst_leg = min(s['score'] for s in scores)
+    avg_score = sum(s['score'] for s in scores) / len(scores)
+    overall_label = 'excellent' if worst_leg >= 85 else 'good' if worst_leg >= 65 else 'fair' if worst_leg >= 45 else 'poor'
+    return {
+        'perLeg': scores,
+        'worstLeg': worst_leg,
+        'avgScore': round(avg_score, 2),
+        'overallLabel': overall_label,
+        'gate': 'PASS' if worst_leg >= 30 else 'FAIL',
+    }
+
+
 def _to_float(v):
     try:
         if v in (None, ""):
@@ -1327,10 +1402,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
         breakevens = [be]
         expected_fit = (hi is not None and be <= hi)
         execution = compute_execution_quality([long_c, short_c], ["buy", "sell"])
+        liquidity = compute_liquidity_score([long_c, short_c])
         spread_multi = (execution["multi_spread_pct"] or float("inf")) / 100.0 if execution.get("multi_spread_pct") is not None else float("inf")
         spread_bps = execution.get("multi_spread_bps")
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
-        exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
+        exec_ok = bool(execution.get("all_legs_liquid")) and liquidity.get('gate') == 'PASS' and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         target_price, target_pct = set_trade_target('debit', None, debit, width - debit, dte)
         invalidation_text, invalidation_price = compute_invalidation('debit_call', leg_defs, spot, dte)
         ticket = {
@@ -1357,10 +1433,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
         breakevens = [be]
         expected_fit = (lo is not None and be <= spot and be >= lo - em * 0.5)
         execution = compute_execution_quality([short_p, long_p], ["sell", "buy"])
+        liquidity = compute_liquidity_score([short_p, long_p])
         spread_multi = (execution["multi_spread_pct"] or float("inf")) / 100.0 if execution.get("multi_spread_pct") is not None else float("inf")
         spread_bps = execution.get("multi_spread_bps")
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
-        exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
+        exec_ok = bool(execution.get("all_legs_liquid")) and liquidity.get('gate') == 'PASS' and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         target_price, target_pct = set_trade_target('credit', credit, None, credit, dte)
         invalidation_text, invalidation_price = compute_invalidation('credit_put', leg_defs, spot, dte)
         ticket = {
@@ -1390,10 +1467,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
         breakevens = [be_low, be_high]
         expected_fit = (lo is not None and hi is not None and be_low <= lo and be_high >= hi)
         execution = compute_execution_quality([sp, lp, sc, lc], ["sell", "buy", "sell", "buy"])
+        liquidity = compute_liquidity_score([sp, lp, sc, lc])
         spread_multi = (execution["multi_spread_pct"] or float("inf")) / 100.0 if execution.get("multi_spread_pct") is not None else float("inf")
         spread_bps = execution.get("multi_spread_bps")
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
-        exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
+        exec_ok = bool(execution.get("all_legs_liquid")) and liquidity.get('gate') == 'PASS' and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         target_price, target_pct = set_trade_target('condor', credit, None, credit, dte)
         invalidation_text, invalidation_price = compute_invalidation('condor', leg_defs, spot, dte)
         ticket = {
@@ -1443,6 +1521,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         gates.append("min_credit_not_met")
     if spread_bps is not None and spread_bps > MAX_SPREAD_BPS:
         gates.append("spread_bps_exceeded")
+    if liquidity.get('gate') != 'PASS':
+        gates.append('liquidity_poor')
     if directional_alignment.get("gate"):
         gates.append(directional_alignment["gate"])
 
@@ -1544,6 +1624,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
                 "spreadPctMulti": round(spread_multi * 100, 2),
                 "spreadBps": round(spread_bps, 1) if spread_bps is not None else None,
                 "execution": execution,
+                "liquidity": liquidity,
                 "entryDebit": round(debit, 2) if candidate_type == "debit" else None,
                 "entryCredit": round(credit, 2) if candidate_type in ("credit", "condor") else None,
                 "width": round(width, 2) if candidate_type in ("debit", "credit") else round(wing, 2),
