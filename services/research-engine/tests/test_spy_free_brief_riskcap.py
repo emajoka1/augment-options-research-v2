@@ -109,7 +109,7 @@ def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys
     monkeypatch.setattr(
         sfb,
         "regime_snapshot",
-        lambda _spot: {
+        lambda _spot, _live=None: {
             "timeUserTz": "test-time",
             "regime": {"riskState": "Neutral"},
             "realizedVol": {"rv10": 0.2, "rv20": 0.2},

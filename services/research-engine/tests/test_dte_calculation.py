@@ -379,6 +379,21 @@ def test_build_data_quality_dashboard_distinguishes_missing_inputs_from_pipeline
     assert out['recommendation'] == 'Regime scoring limited: vix, us10y unavailable. Trade recommendations have reduced confidence.'
 
 
+def test_classify_rates_move_labels_noise_and_meaningful_moves():
+    assert sfb.classify_rates_move(-0.050)['direction'] == 'flat'
+    detail = sfb.classify_rates_move(-0.695)
+    assert detail['direction'] == 'down'
+    assert detail['magnitude'] == 'meaningful'
+    assert detail['bps_approx'] == 8.9
+
+
+def test_compute_risk_state_uses_rates_when_vix_unknown():
+    assert sfb.compute_risk_state('not-uptrend', 'unknown', 'down')[0] == 'Risk-Off'
+    assert sfb.compute_risk_state('not-uptrend', 'unknown', 'up')[0] == 'Risk-Off'
+    assert sfb.compute_risk_state('uptrend', 'unknown', 'down')[0] == 'Risk-On'
+    assert sfb.compute_risk_state('uptrend', 'unknown', 'up')[0] == 'Neutral'
+
+
 def test_set_trade_target_condor_one_dte_uses_80pct_profit_target():
     target, pct = sfb.set_trade_target('condor', 1.18, None, 1.18, 1)
     assert target == 0.24

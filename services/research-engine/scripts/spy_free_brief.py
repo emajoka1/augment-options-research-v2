@@ -1379,12 +1379,16 @@ def regime_snapshot(spot, live=None):
     else:
         us10y_change, rates_dir, rates_observed_at = fetch_fred_day_change('DGS10')
 
-    risk_regime = "Risk-on" if trend_up else "Neutral"
+    ma_signal = 'uptrend' if trend_up else 'not-uptrend'
+    vix_signal = 'falling' if vix_dir == 'down' else ('rising' if vix_dir == 'up' else 'unknown')
+    rates_detail = classify_rates_move(us10y_change)
+    rates_signal = rates_detail['direction']
+    risk_regime, state_reasoning = compute_risk_state(ma_signal, vix_signal, rates_signal)
 
     metrics = [
         {"metric": "MA5-MA20", "value": round((ma5 - ma20), 3) if ma5 and ma20 else None, "threshold": ">0", "interpretation": "uptrend" if trend_up else "not-uptrend", "observedAt": datetime.now(timezone.utc).isoformat()},
         {"metric": "VIX day change", "value": round(vix_change, 3) if vix_change is not None else None, "threshold": "<0 risk-on", "interpretation": vix_dir, "observedAt": vix_observed_at},
-        {"metric": "US10Y day change", "value": round(us10y_change, 3) if us10y_change is not None else None, "threshold": "context", "interpretation": rates_dir, "observedAt": rates_observed_at, "source": "ZN_futures_proxy" if (us10y_live.get('streamerSymbol') or '').startswith('/ZN') else "FRED_DGS10", "note": us10y_live.get('rollNote') or ("Inverted daily change from /ZN front contract — directional proxy, not exact basis-point yield change" if (us10y_live.get('streamerSymbol') or '').startswith('/ZN') else "Cash-yield fallback from FRED")},
+        {"metric": "US10Y day change", "value": round(us10y_change, 3) if us10y_change is not None else None, "threshold": "context", "interpretation": rates_detail['direction'], "observedAt": rates_observed_at, "source": "ZN_futures_proxy" if (us10y_live.get('streamerSymbol') or '').startswith('/ZN') else "FRED_DGS10", "note": us10y_live.get('rollNote') or ("Inverted daily change from /ZN front contract — directional proxy, not exact basis-point yield change" if (us10y_live.get('streamerSymbol') or '').startswith('/ZN') else "Cash-yield fallback from FRED"), "bpsApprox": rates_detail['bps_approx'], "magnitude": rates_detail['magnitude']},
     ]
 
     rv10 = ann_realized_vol(closes, 10)
@@ -1408,7 +1412,14 @@ def regime_snapshot(spot, live=None):
             "riskState": risk_regime,
             "trend": "up" if trend_up else "down_or_flat",
             "vixDirection": vix_dir,
-            "ratesDirection": rates_dir,
+            "ratesDirection": rates_detail['direction'],
+            "ratesDetail": {
+                "bps_approx": rates_detail['bps_approx'],
+                "magnitude": rates_detail['magnitude'],
+                "source": "ZN_futures_proxy" if (us10y_live.get('streamerSymbol') or '').startswith('/ZN') else "FRED_DGS10",
+                "note": us10y_live.get('rollNote') or ("Inverted daily change from /ZN front contract — directional proxy, not exact basis-point yield change" if (us10y_live.get('streamerSymbol') or '').startswith('/ZN') else "Cash-yield fallback from FRED"),
+            },
+            "stateReasoning": state_reasoning,
             "metrics": metrics,
         },
         "realizedVol": {"rv10": rv10, "rv20": rv20},
@@ -1481,6 +1492,68 @@ def compute_data_quality_factor(regime_data: dict) -> dict:
         "qualityFactor": quality_factor,
         "perMetric": per_metric,
     }
+
+
+def classify_rates_move(zn_inverted_change):
+    value = _to_float(zn_inverted_change)
+    if value is None:
+        return {
+            'direction': 'unknown',
+            'magnitude': 'unknown',
+            'bps_approx': None,
+            'raw_zn_change': None,
+        }
+    bps_approx = abs(value) / 0.078
+    if value > 0:
+        direction = 'up'
+    elif value < 0:
+        direction = 'down'
+    else:
+        direction = 'flat'
+    if bps_approx < 2:
+        magnitude = 'noise'
+        direction = 'flat'
+    elif bps_approx < 5:
+        magnitude = 'minor'
+    elif bps_approx < 10:
+        magnitude = 'meaningful'
+    elif bps_approx < 20:
+        magnitude = 'significant'
+    else:
+        magnitude = 'extreme'
+    return {
+        'direction': direction,
+        'magnitude': magnitude,
+        'bps_approx': round(bps_approx, 1),
+        'raw_zn_change': value,
+    }
+
+
+def compute_risk_state(ma_signal, vix_signal, rates_signal):
+    available = sum(1 for s in [ma_signal, vix_signal, rates_signal] if s != 'unknown')
+    if vix_signal == 'unknown':
+        if ma_signal == 'not-uptrend' and rates_signal == 'down':
+            return 'Risk-Off', f'Equities in downtrend with yields falling. Two of {available} available signals point risk-off.'
+        if ma_signal == 'not-uptrend' and rates_signal == 'up':
+            return 'Risk-Off', f'Equities in downtrend with yields rising. Two of {available} available signals point risk-off.'
+        if ma_signal == 'uptrend' and rates_signal == 'down':
+            return 'Risk-On', f'Equities in uptrend with yields falling. Two of {available} available signals point risk-on.'
+        if ma_signal == 'uptrend' and rates_signal == 'up':
+            return 'Neutral', f'Equities in uptrend but yields rising. Mixed two-signal setup, so risk state stays neutral.'
+        return 'Neutral', f'Only {available} of 3 regime signals are available, so risk state stays neutral.'
+    if ma_signal == 'not-uptrend' and vix_signal == 'rising' and rates_signal == 'down':
+        return 'Risk-Off', 'Equities down, VIX rising, and yields falling. Classic risk-off trifecta.'
+    if ma_signal == 'uptrend' and vix_signal == 'falling' and rates_signal == 'down':
+        return 'Risk-On', 'Equities up, VIX falling, and yields falling. Classic risk-on setup.'
+    if ma_signal == 'uptrend' and vix_signal == 'falling' and rates_signal == 'up':
+        return 'Risk-On', 'Equities up and VIX falling despite higher yields. Risk-on with some rate pressure.'
+    if ma_signal == 'not-uptrend' and vix_signal == 'rising' and rates_signal == 'up':
+        return 'Risk-Off', 'Equities down, VIX rising, and yields rising. Tightening into weakness is risk-off.'
+    if ma_signal == 'not-uptrend' and vix_signal == 'falling' and rates_signal == 'down':
+        return 'Neutral', 'Equities are weak but fear is easing while bonds are bid. Transitional, so neutral.'
+    if ma_signal == 'uptrend' and vix_signal == 'rising' and rates_signal == 'up':
+        return 'Neutral', 'Equities are up, but fear and yields are also rising. Late-cycle mixed signal.'
+    return 'Neutral', 'Regime inputs are mixed, so risk state stays neutral.'
 
 
 def compute_final_score(component_scores, gate_results):
