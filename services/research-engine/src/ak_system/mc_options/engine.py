@@ -476,7 +476,11 @@ class MCEngine:
         attribution = compute_edge_attribution(ivp, rv10, rv20, regime_probs, breakevens, spot, expiry_years)
         explainable = (attribution["signals_pass"] >= 2) if (rv_contract_pass and rv_freshness_pass and breakevens is not None) else False
         attribution["explainable"] = bool(explainable)
-        attribution["explainable_reason"] = None if explainable else (rv_staleness_reason or breakeven_failure_code)
+        attribution["explainable_reason"] = (
+            "Edge is explainable: at least two independent regime/volatility signals agree with the trade thesis"
+            if explainable
+            else (rv_staleness_reason or breakeven_failure_code or "Insufficient independent signals to explain edge")
+        )
         gates, friction_hurdle = evaluate_survival_gates(metrics, multi_seed_confidence, dominant_regime, attribution, config)
         gates["allow_trade"] = bool(
             rv_contract_pass

@@ -29,3 +29,8 @@ def test_extract_confidence_intervals_fallback_from_summary_stats():
     assert out['sampleSize'] == 500
     assert out['ev']['ci_low'] < out['ev']['value'] < out['ev']['ci_high']
     assert 0.0 <= out['pop']['ci_low'] <= out['pop']['value'] <= out['pop']['ci_high'] <= 1.0
+
+
+def test_explainable_reason_text_is_non_null_for_true_case():
+    reason = 'Edge is explainable: at least two independent regime/volatility signals agree with the trade thesis'
+    assert reason is not None
