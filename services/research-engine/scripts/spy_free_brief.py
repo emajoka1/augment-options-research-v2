@@ -504,6 +504,44 @@ def validate_mc_inputs(spot, iv, rv, dte, legs, strategy_type):
     }
 
 
+def compute_invalidation(strategy_type, legs, spot, dte):
+    if strategy_type == 'condor':
+        short_put_strike = min(l['strike'] for l in legs if l.get('side') == 'P' and l.get('action') == 'sell')
+        short_call_strike = max(l['strike'] for l in legs if l.get('side') == 'C' and l.get('action') == 'sell')
+        return f"SPY outside [{short_put_strike}, {short_call_strike}] with momentum", None
+
+    if strategy_type in ('credit_put', 'credit'):
+        short_strike = max(l['strike'] for l in legs if l.get('side') == 'P' and l.get('action') == 'sell')
+        return f"SPY < {short_strike}", short_strike
+
+    if strategy_type == 'credit_call':
+        short_strike = min(l['strike'] for l in legs if l.get('side') == 'C' and l.get('action') == 'sell')
+        return f"SPY > {short_strike}", short_strike
+
+    if strategy_type in ('debit_call', 'debit'):
+        long_strike = min(l['strike'] for l in legs if l.get('side') == 'C' and l.get('action') == 'buy')
+        support_level = round(float(spot) * 0.98, 2)
+        return f"SPY fails to trade above {long_strike} or drops below {support_level}", support_level
+
+    if strategy_type == 'debit_put':
+        long_strike = max(l['strike'] for l in legs if l.get('side') == 'P' and l.get('action') == 'buy')
+        resistance_level = round(float(spot) * 1.02, 2)
+        return f"SPY fails to trade below {long_strike} or rises above {resistance_level}", resistance_level
+
+    return "SPY moves against position thesis", None
+
+
+def validate_invalidation_level(invalidation_price, spot):
+    if invalidation_price is not None:
+        distance_pct = abs(float(invalidation_price) - float(spot)) / float(spot)
+        if distance_pct > 0.20:
+            return {
+                'valid': False,
+                'warning': f"Invalidation at {invalidation_price} is {distance_pct*100:.1f}% from spot — unrealistic"
+            }
+    return {'valid': True}
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -1089,6 +1127,10 @@ def build_trade(candidate_type, legs, spot, vol, context):
 
     if candidate_type == "debit":
         long_c, short_c = legs
+        leg_defs = [
+            {**long_c, 'action': 'buy'},
+            {**short_c, 'action': 'sell'},
+        ]
         debit = max(0.01, float(long_c["mark"]) - float(short_c["mark"]))
         width = abs(float(short_c["strike"]) - float(long_c["strike"]))
         max_loss = estimate_structure_risk('debit', risk_cap=risk_cap_dollars(), debit=debit)['max_loss']
@@ -1101,6 +1143,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
         exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         target_price, target_pct = set_trade_target('debit', None, debit, width - debit, dte)
+        invalidation_text, invalidation_price = compute_invalidation('debit_call', leg_defs, spot, dte)
         ticket = {
             "legs": [f"Buy {long_c['symbol']}", f"Sell {short_c['symbol']}"],
             "expiry": long_c["expiry"],
@@ -1108,11 +1151,16 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "maxLoss": round(max_loss, 2),
             "target": target_price,
             "stop": round(debit * 0.6, 2),
-            "invalidation": f"SPY < {round(min(long_c['strike'], short_c['strike']) - em * 0.2, 2) if em else 'ORL'}",
+            "invalidation": invalidation_text,
             "positionSizeContracts": contracts_for_risk(max_loss),
         }
+        invalidation_validation = validate_invalidation_level(invalidation_price, spot)
     elif candidate_type == "credit":
         short_p, long_p = legs
+        leg_defs = [
+            {**short_p, 'action': 'sell'},
+            {**long_p, 'action': 'buy'},
+        ]
         credit = max(0.01, float(short_p["mark"]) - float(long_p["mark"]))
         width = abs(float(short_p["strike"]) - float(long_p["strike"]))
         max_loss = estimate_structure_risk('credit', risk_cap=risk_cap_dollars(), width=width, credit=credit)['max_loss']
@@ -1125,6 +1173,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
         exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         target_price, target_pct = set_trade_target('credit', credit, None, credit, dte)
+        invalidation_text, invalidation_price = compute_invalidation('credit_put', leg_defs, spot, dte)
         ticket = {
             "legs": [f"Sell {short_p['symbol']}", f"Buy {long_p['symbol']}"],
             "expiry": short_p["expiry"],
@@ -1132,11 +1181,18 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "maxLoss": round(max_loss, 2),
             "target": target_price,
             "stop": round(credit * 1.8, 2),
-            "invalidation": f"SPY < {round(short_p['strike'],2)}",
+            "invalidation": invalidation_text,
             "positionSizeContracts": contracts_for_risk(max_loss),
         }
+        invalidation_validation = validate_invalidation_level(invalidation_price, spot)
     else:
         sp, lp, sc, lc = legs
+        leg_defs = [
+            {**sp, 'action': 'sell'},
+            {**lp, 'action': 'buy'},
+            {**sc, 'action': 'sell'},
+            {**lc, 'action': 'buy'},
+        ]
         credit = max(0.01, float(sp["mark"]) + float(sc["mark"]) - float(lp["mark"]) - float(lc["mark"]))
         wing = min(abs(float(sp["strike"]) - float(lp["strike"])), abs(float(lc["strike"]) - float(sc["strike"])))
         max_loss = estimate_structure_risk('condor', risk_cap=risk_cap_dollars(), wing=wing, credit=credit)['max_loss']
@@ -1150,6 +1206,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
         exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         target_price, target_pct = set_trade_target('condor', credit, None, credit, dte)
+        invalidation_text, invalidation_price = compute_invalidation('condor', leg_defs, spot, dte)
         ticket = {
             "legs": [f"Sell {sp['symbol']}", f"Buy {lp['symbol']}", f"Sell {sc['symbol']}", f"Buy {lc['symbol']}"],
             "expiry": sp["expiry"],
@@ -1157,9 +1214,10 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "maxLoss": round(max_loss, 2),
             "target": target_price,
             "stop": round(credit * 1.8, 2),
-            "invalidation": f"SPY outside [{round(sp['strike'],2)}, {round(sc['strike'],2)}] with momentum",
+            "invalidation": invalidation_text,
             "positionSizeContracts": contracts_for_risk(max_loss),
         }
+        invalidation_validation = validate_invalidation_level(invalidation_price, spot)
 
     # hard checks
     missing = []
@@ -1175,6 +1233,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
         f"Vol Edge: ivCurrent={round(vol.get('ivCurrent') or 0,4)} rv10={round(context['realizedVol'].get('rv10') or 0,4)} rv20={round(context['realizedVol'].get('rv20') or 0,4)} => {vol.get('volLabel')}",
         f"ExpectedMove: em={round(em,2) if em else None} bounds=[{round(lo,2) if lo else None},{round(hi,2) if hi else None}] breakevens={','.join(str(round(x,2)) for x in breakevens)} => {'fit' if expected_fit else 'no_fit'}",
     ]
+    if not invalidation_validation.get('valid'):
+        why.append(invalidation_validation['warning'])
 
     decision = "TRADE"
     gates = []

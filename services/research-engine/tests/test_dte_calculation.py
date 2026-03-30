@@ -389,6 +389,22 @@ def test_regime_score_applies_directional_alignment_multiplier():
     assert score['machineFactors']['directionalAlignment']['gate'] == 'directional_mismatch'
 
 
+def test_compute_invalidation_debit_call_is_near_spot_and_long_strike():
+    legs = [
+        {'side': 'C', 'action': 'buy', 'strike': 640.0},
+        {'side': 'C', 'action': 'sell', 'strike': 645.0},
+    ]
+    text, level = sfb.compute_invalidation('debit_call', legs, 636.2, 1)
+    assert 'fails to trade above 640.0' in text
+    assert level == round(636.2 * 0.98, 2)
+
+
+def test_validate_invalidation_level_rejects_absurd_distance():
+    out = sfb.validate_invalidation_level(360.88, 636.2)
+    assert out['valid'] is False
+    assert 'unrealistic' in out['warning']
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
