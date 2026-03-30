@@ -1258,13 +1258,14 @@ def build_candidates(rows):
 
 def _load_dxlink_candles() -> list[float]:
     """Load SPY daily close prices from canonical daily-close file, with fallback collapse from intraday candles."""
+    min_required = 21
     daily_data = load_json_file(Path(DXLINK_DAILY_CLOSES_OUT)) or {}
     closes_from_daily = []
     for row in daily_data.get("closes") or []:
         value = _to_float((row or {}).get("close"))
         if value is not None and math.isfinite(value):
             closes_from_daily.append(value)
-    if closes_from_daily:
+    if len(closes_from_daily) >= min_required:
         return closes_from_daily
 
     try:
@@ -1283,7 +1284,7 @@ def _load_dxlink_candles() -> list[float]:
             value = _to_float((row or {}).get("close"))
             if value is not None and math.isfinite(value):
                 closes_from_daily.append(value)
-        if closes_from_daily:
+        if len(closes_from_daily) >= min_required:
             return closes_from_daily
     except Exception:
         pass
@@ -1314,7 +1315,8 @@ def _load_dxlink_candles() -> list[float]:
         if existing is None or ts > existing[0]:
             daily_closes[day_key] = (int(ts), value)
     ordered_days = sorted(daily_closes)
-    return [daily_closes[day][1] for day in ordered_days]
+    intraday_collapsed = [daily_closes[day][1] for day in ordered_days]
+    return closes_from_daily if len(closes_from_daily) >= len(intraday_collapsed) else intraday_collapsed
 
 
 def regime_snapshot(spot):
