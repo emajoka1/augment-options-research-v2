@@ -1371,7 +1371,7 @@ def regime_snapshot(spot, live=None):
     us10y_last = _to_float(us10y_live.get('mark')) or _to_float(us10y_live.get('last'))
     us10y_prev_close = _to_float(us10y_live.get('prevDayClosePrice'))
     if us10y_last is not None and us10y_prev_close is not None:
-        us10y_change = float(us10y_last - us10y_prev_close)
+        us10y_change = float(-(us10y_last - us10y_prev_close))
         rates_dir = 'up' if us10y_change > 0 else ('down' if us10y_change < 0 else 'flat')
         rates_observed_at = datetime.now(timezone.utc).isoformat()
     else:
@@ -1382,7 +1382,7 @@ def regime_snapshot(spot, live=None):
     metrics = [
         {"metric": "MA5-MA20", "value": round((ma5 - ma20), 3) if ma5 and ma20 else None, "threshold": ">0", "interpretation": "uptrend" if trend_up else "not-uptrend", "observedAt": datetime.now(timezone.utc).isoformat()},
         {"metric": "VIX day change", "value": round(vix_change, 3) if vix_change is not None else None, "threshold": "<0 risk-on", "interpretation": vix_dir, "observedAt": vix_observed_at},
-        {"metric": "US10Y day change", "value": round(us10y_change, 3) if us10y_change is not None else None, "threshold": "context", "interpretation": rates_dir, "observedAt": rates_observed_at},
+        {"metric": "US10Y day change", "value": round(us10y_change, 3) if us10y_change is not None else None, "threshold": "context", "interpretation": rates_dir, "observedAt": rates_observed_at, "source": "ZN_futures_proxy" if us10y_last is not None and us10y_prev_close is not None else "FRED_DGS10", "note": "Inverted daily change from /ZN front contract — directional proxy, not exact basis-point yield change" if us10y_last is not None and us10y_prev_close is not None else "Cash-yield fallback from FRED"},
     ]
 
     rv10 = ann_realized_vol(closes, 10)

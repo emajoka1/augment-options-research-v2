@@ -36,7 +36,7 @@ const STATUS_STDOUT = String(process.env.DXLINK_STATUS_STDOUT || '1') !== '0';
 const MARKET_TZ = 'America/New_York';
 const MARKET_CLOSE_HOUR_ET = 16;
 const VIX_SYMBOL = String(process.env.DXLINK_VIX_SYMBOL || 'VIX');
-const US10Y_SYMBOL = String(process.env.DXLINK_US10Y_SYMBOL || '/10Y');
+const US10Y_SYMBOL = String(process.env.DXLINK_US10Y_SYMBOL || '/ZNU6:XCBT');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -194,8 +194,9 @@ async function main() {
       streamerSymbol: VIX_SYMBOL,
     },
     us10y: {
-      symbol: '/10Y',
+      symbol: 'ZN',
       streamerSymbol: US10Y_SYMBOL,
+      proxy: 'ZN_futures_proxy',
     },
     quoteToken: {
       level: null,
