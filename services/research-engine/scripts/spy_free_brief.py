@@ -542,6 +542,63 @@ def validate_invalidation_level(invalidation_price, spot):
     return {'valid': True}
 
 
+def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, spot, context):
+    if not legs or not ticket:
+        return {}
+
+    dte = min((l.get('dte') or 999) for l in legs if l is not None)
+    em = (expected_move_payload or {}).get('value') or 0
+    em_pct = round((em / spot) * 100, 1) if spot and em else None
+    rv10 = (context.get('realizedVol') or {}).get('rv10')
+    rv20 = (context.get('realizedVol') or {}).get('rv20')
+    rv_current = max(v for v in [rv10, rv20] if v is not None) if any(v is not None for v in [rv10, rv20]) else None
+    iv_current = _to_float((expected_move_payload or {}).get('ivUsed'))
+    theta_per_day = round((ticket.get('target') or 0) / max(dte, 1), 2) if ticket.get('target') is not None else None
+    breakeven_days = max(1, round(dte / 2)) if dte not in (None, 999) else None
+
+    if candidate_type == 'condor' and len(legs) >= 4:
+        puts = sorted([l for l in legs if l.get('side') == 'P'], key=lambda x: x.get('strike', 0), reverse=True)
+        calls = sorted([l for l in legs if l.get('side') == 'C'], key=lambda x: x.get('strike', 0))
+        short_put = puts[0].get('strike') if puts else None
+        long_put = puts[-1].get('strike') if puts else None
+        short_call = calls[0].get('strike') if calls else None
+        long_call = calls[-1].get('strike') if calls else None
+        return {
+            'loseQuicklyIf': f"A sharp directional move (>{em_pct}% in either direction) breaks through the short strike at {short_put}/{short_call} before theta decay offsets the loss. Gamma risk is highest in the last {min(dte, 3)} days of the trade.",
+            'volBreak': f"If realized vol expands above {round((rv_current or 0)*100,1)}% (currently {round((rv_current or 0)*100,1)}%), the wings widen in value faster than theta decays the shorts. A VIX spike above 25 would likely trigger this.",
+            'priceInvalidation': f"SPY closes outside [{short_put}, {short_call}]. Partial loss begins between the short and long strikes. Full max loss at [{long_put}, {long_call}].",
+            'timeDecay': f"If SPY stays range-bound, this trade profits ~${theta_per_day}/day from theta. Break-even time horizon: {breakeven_days} days (all else equal).",
+        }
+
+    if candidate_type == 'credit' and len(legs) >= 2:
+        short_strike = max(l.get('strike') for l in legs if l.get('side') == 'P')
+        long_strike = min(l.get('strike') for l in legs if l.get('side') == 'P')
+        max_loss = ticket.get('maxLoss')
+        iv_break = round(((iv_current or 0) + 0.10) * 100, 1) if iv_current is not None else None
+        vol_cost = round((ticket.get('entryRange', [0])[0] or 0) * 0.25, 2)
+        return {
+            'loseQuicklyIf': f"SPY drops below {short_strike} with momentum. A gap down through {long_strike} produces max loss of ${max_loss}. Most dangerous scenario: overnight gap on negative news with no chance to manage.",
+            'volBreak': f"IV expansion of +10.0pts increases the short put value faster than theta decay. At current IV ({round((iv_current or 0)*100,1)}%), a move to {iv_break}% would add ~${vol_cost} to the spread's mark-to-market loss.",
+            'priceInvalidation': f"SPY below {short_strike}. Partial loss between {short_strike} and {long_strike}. Full max loss of ${max_loss} below {long_strike}.",
+        }
+
+    if candidate_type == 'debit' and len(legs) >= 2:
+        long_strike = min(l.get('strike') for l in legs if l.get('side') == 'C')
+        breakeven = ((expected_move_payload or {}).get('breakevens') or [None])[0]
+        max_loss = ticket.get('maxLoss')
+        required_move = round(max(0, ((breakeven or long_strike) - spot) / spot * 100), 1) if spot and (breakeven or long_strike) else None
+        theta_per_day = round((ticket.get('entryRange', [0,0])[1] - ticket.get('entryRange', [0,0])[0]) / max(dte,1), 2) if ticket.get('entryRange') else None
+        vol_drop = 10.0
+        vega_loss = round((ticket.get('entryRange', [0])[0] or 0) * 0.15, 2)
+        return {
+            'loseQuicklyIf': f"SPY fails to move above {long_strike} by expiry. With {dte} DTE, theta decay costs ~${theta_per_day}/day. The trade needs a {required_move}% move in {dte} days to profit.",
+            'volBreak': f"IV contraction (vol crush) reduces the value of both legs, but hurts the long leg more. A {vol_drop}pt IV drop costs ~${vega_loss} in value. Avoid holding through known vol-crush events (earnings, FOMC).",
+            'priceInvalidation': f"SPY below {breakeven} at expiry. Max loss of ${max_loss} occurs if SPY is at or below {long_strike} at expiry.",
+        }
+
+    return {}
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -1262,12 +1319,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
 
     final_score = compute_final_score(score, gates)
 
-    counterfactuals = {
-        "loseQuicklyIf": "Underlying moves through invalidation before theta/vega thesis materializes",
-        "volBreak": "If IV shifts opposite by >2 volatility points vs entry assumption",
-        "priceInvalidation": ticket["invalidation"],
-        "altIfIvPlus10": "If IV +10 pts, shift to defined-risk short premium (credit spread/condor) with wider wings",
-    }
+    counterfactuals = build_counterfactuals(candidate_type, legs, ticket, {
+        "value": round(em, 2) if em else None,
+        "breakevens": [round(x, 2) for x in breakevens],
+        "ivUsed": round(iv, 4) if iv is not None else None,
+    }, spot, context)
 
     structure_legs = []
     for leg in legs:

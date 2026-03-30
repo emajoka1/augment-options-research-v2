@@ -405,6 +405,34 @@ def test_validate_invalidation_level_rejects_absurd_distance():
     assert 'unrealistic' in out['warning']
 
 
+def test_build_counterfactuals_debit_is_strategy_specific():
+    legs = [
+        {'side': 'C', 'strike': 650.0, 'dte': 18},
+        {'side': 'C', 'strike': 665.0, 'dte': 18},
+    ]
+    ticket = {'maxLoss': 558.0, 'entryRange': [5.47, 5.75], 'target': 11.16, 'invalidation': 'SPY fails to trade above 650.0 or drops below 624.66'}
+    expected = {'value': 35.59, 'breakevens': [655.52], 'ivUsed': 0.2516}
+    context = {'realizedVol': {'rv10': 0.15, 'rv20': 0.14}}
+    out = sfb.build_counterfactuals('debit', legs, ticket, expected, 636.2, context)
+    assert 'fails to move above 650.0 by expiry' in out['loseQuicklyIf']
+    assert 'IV contraction (vol crush)' in out['volBreak']
+    assert 'Max loss of $558.0 occurs if SPY is at or below 650.0 at expiry.' in out['priceInvalidation']
+
+
+def test_build_counterfactuals_credit_is_strategy_specific():
+    legs = [
+        {'side': 'P', 'strike': 610.0, 'dte': 18},
+        {'side': 'P', 'strike': 595.0, 'dte': 18},
+    ]
+    ticket = {'maxLoss': 1271.0, 'entryRange': [2.22, 2.36], 'target': 1.37, 'invalidation': 'SPY < 610.0'}
+    expected = {'value': 41.76, 'breakevens': [607.71], 'ivUsed': 0.2952}
+    context = {'realizedVol': {'rv10': 0.15, 'rv20': 0.14}}
+    out = sfb.build_counterfactuals('credit', legs, ticket, expected, 637.13, context)
+    assert 'SPY drops below 610.0 with momentum.' in out['loseQuicklyIf']
+    assert 'move to 39.5%' in out['volBreak']
+    assert 'Full max loss of $1271.0 below 595.0.' in out['priceInvalidation']
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
