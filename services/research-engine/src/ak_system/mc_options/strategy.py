@@ -110,6 +110,10 @@ def default_exit_rules_for_strategy(strategy_name: str, expiry_days: float | Non
         return ExitRules(take_profit_pct=1.50, stop_loss_pct=0.50, dte_stop_days=0.10, gamma_risk_dte_days=0.10, event_risk_exit=False)
     if strategy_name in {"put_calendar", "put_diagonal"}:
         return ExitRules(take_profit_pct=0.40, stop_loss_pct=0.60, dte_stop_days=1.0, gamma_risk_dte_days=0.50, event_risk_exit=True)
+    if strategy_name == "put_credit_spread":
+        if expiry_days is not None and expiry_days <= 21:
+            return ExitRules(take_profit_pct=0.50, stop_loss_pct=2.00, dte_stop_days=1.0, gamma_risk_dte_days=1.0, event_risk_exit=True)
+        return ExitRules(take_profit_pct=0.50, stop_loss_pct=2.00, dte_stop_days=2.0, gamma_risk_dte_days=2.0, event_risk_exit=True)
     return ExitRules(take_profit_pct=0.5, stop_loss_pct=1.0, dte_stop_days=0.25)
 
 
