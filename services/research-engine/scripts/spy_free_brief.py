@@ -886,6 +886,96 @@ def build_recommendation(analyses, context, mandatory_missing, no_candidates_rea
     }
 
 
+def build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_missing):
+    checks = []
+    checks.append({
+        'input': 'spot_price',
+        'status': 'OK' if spot else 'ERROR',
+        'value': spot,
+        'source': 'live' if spot else 'missing',
+    })
+
+    regime_metrics = ((context.get('regime') or {}).get('metrics') or [])
+    for metric in regime_metrics:
+        status = 'OK'
+        impact = None
+        if metric.get('value') is None:
+            status = 'MISSING'
+            impact = 'regime_score_capped'
+        checks.append({
+            'input': str(metric.get('metric', '')).lower().replace(' ', '_'),
+            'status': status,
+            'value': metric.get('value'),
+            'impact': impact,
+        })
+
+    iv_current = vol.get('ivCurrent')
+    iv_status = 'OK'
+    iv_impact = None
+    if iv_current is None:
+        iv_status = 'MISSING'
+        iv_impact = 'vol_metrics_unreliable'
+    elif not (0.05 <= iv_current <= 1.50):
+        iv_status = 'SUSPECT'
+        iv_impact = 'vol_metrics_unreliable'
+    checks.append({
+        'input': 'iv_aggregate',
+        'status': iv_status,
+        'value': iv_current,
+        'expected_range': [0.05, 1.50],
+        'impact': iv_impact,
+    })
+
+    rv10 = (context.get('realizedVol') or {}).get('rv10')
+    rv_status = 'OK'
+    rv_impact = None
+    if rv10 is None:
+        rv_status = 'MISSING'
+        rv_impact = 'iv_rv_ratio_unreliable'
+    elif not (0.05 <= rv10 <= 0.80):
+        rv_status = 'SUSPECT'
+        rv_impact = 'iv_rv_ratio_unreliable'
+    checks.append({
+        'input': 'rv10',
+        'status': rv_status,
+        'value': rv10,
+        'expected_range': [0.05, 0.80],
+        'impact': rv_impact,
+    })
+
+    nearest_dte = (dte_summary or {}).get('nearestDte')
+    dte_status = 'OK'
+    dte_impact = None
+    if nearest_dte is None:
+        dte_status = 'MISSING'
+        dte_impact = 'all_time_dependent_metrics_wrong'
+    elif nearest_dte < 0:
+        dte_status = 'ERROR'
+        dte_impact = 'all_time_dependent_metrics_wrong'
+    checks.append({
+        'input': 'dte',
+        'status': dte_status,
+        'value': nearest_dte,
+        'impact': dte_impact,
+    })
+
+    statuses = [c['status'] for c in checks]
+    if 'ERROR' in statuses:
+        overall = 'ERROR'
+    elif 'SUSPECT' in statuses or 'MISSING' in statuses or mandatory_missing:
+        overall = 'DEGRADED'
+    else:
+        overall = 'OK'
+
+    recommendation = 'Do not trade until data pipeline errors are resolved' if overall != 'OK' else 'Inputs appear healthy'
+    return {
+        'overall': overall,
+        'timestamp': datetime.now(ZoneInfo('Europe/London')).isoformat(timespec='minutes'),
+        'checks': checks,
+        'recommendation': recommendation,
+    }
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -2068,8 +2158,10 @@ def generate_brief_payload():
             no_candidates_reason = "NO_CANDIDATES: no structure met liquidity/execution constraints for this setup."
 
     recommendation = build_recommendation(analyses, context, mandatory_missing, no_candidates_reason)
+    data_quality_dashboard = build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_missing)
 
     output = {
+        "dataQuality": data_quality_dashboard,
         "brief_meta": {
             "brief_id": brief_id,
             "snapshot_id": snapshot_id,
@@ -2088,7 +2180,7 @@ def generate_brief_payload():
             "Ticker": "SPY",
             "Spot": spot,
             "DTE": dte_summary,
-            "DataQuality": context.get("dataQuality"),
+            "DataQuality": data_quality_dashboard,
             "Regime": context["regime"],
             "Volatility State": vol,
             "Candidates": analyses,

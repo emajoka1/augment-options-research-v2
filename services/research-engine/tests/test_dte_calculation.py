@@ -506,6 +506,23 @@ def test_build_recommendation_no_trade_when_all_candidates_rejected_without_data
     assert out['color'] == 'red'
 
 
+def test_build_data_quality_dashboard_marks_missing_inputs_degraded():
+    context = {
+        'regime': {
+            'metrics': [
+                {'metric': 'VIX day change', 'value': None},
+                {'metric': 'US10Y day change', 'value': None},
+            ]
+        },
+        'realizedVol': {'rv10': None},
+    }
+    vol = {'ivCurrent': 0.29}
+    dte_summary = {'nearestDte': 1}
+    out = sfb.build_data_quality_dashboard(636.2, context, vol, dte_summary, ['realized_vol'])
+    assert out['overall'] == 'DEGRADED'
+    assert any(c['input'] == 'rv10' and c['status'] in {'MISSING', 'SUSPECT'} for c in out['checks'])
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
