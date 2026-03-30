@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -82,10 +83,17 @@ def api_get(base: str, path: str, params: dict[str, Any] | None = None) -> tuple
 
 def api_post(base: str, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
     client = get_http_client()
-    try:
-        resp = client.post(f'{base}{path}', json=payload)
-    except Exception as exc:
-        return 0, {'error': str(exc), 'kind': 'network_error'}
+    last_exc = None
+    for attempt in range(2):
+        try:
+            resp = client.post(f'{base}{path}', json=payload)
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(0.5)
+                continue
+            return 0, {'error': str(exc), 'kind': 'network_error'}
     try:
         return resp.status_code, resp.json()
     except Exception:
@@ -392,7 +400,11 @@ with brief_tab:
     if st.button('Load brief', key='load_brief'):
         st.session_state['last_brief'] = api_post(api_base, f'/v1/brief/{symbol}', payload={})
     if st.session_state.get('live_auto_refresh') and st.session_state.get('last_brief') is not None:
-        st.session_state['last_brief'] = api_post(api_base, f'/v1/brief/{symbol}', payload={})
+        refreshed = api_post(api_base, f'/v1/brief/{symbol}', payload={})
+        if isinstance(refreshed, tuple) and len(refreshed) == 2 and 200 <= refreshed[0] < 300:
+            st.session_state['last_brief'] = refreshed
+        elif st.button('Retry brief now', key='retry_brief_now'):
+            st.session_state['last_brief'] = api_post(api_base, f'/v1/brief/{symbol}', payload={})
     result = st.session_state.get('last_brief')
     if result and isinstance(result, tuple) and len(result) == 2:
         code, payload = result
