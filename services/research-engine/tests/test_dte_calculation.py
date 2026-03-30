@@ -420,8 +420,9 @@ def test_build_counterfactuals_debit_is_strategy_specific():
     ticket = {'maxLoss': 558.0, 'entryRange': [5.47, 5.75], 'target': 11.16, 'invalidation': 'SPY fails to trade above 650.0 or drops below 624.66'}
     expected = {'value': 35.59, 'breakevens': [655.52], 'ivUsed': 0.2516}
     context = {'realizedVol': {'rv10': 0.15, 'rv20': 0.14}}
-    out = sfb.build_counterfactuals('debit', legs, ticket, expected, 636.2, context)
+    out = sfb.build_counterfactuals('debit', legs, ticket, expected, 636.2, context, greeks={'thetaPerDay': -17.24})
     assert 'fails to move above 650.0 by expiry' in out['loseQuicklyIf']
+    assert '~$-17.24/day' in out['loseQuicklyIf']
     assert 'IV contraction (vol crush)' in out['volBreak']
     assert 'Max loss of $558.0 occurs if SPY is at or below 650.0 at expiry.' in out['priceInvalidation']
 

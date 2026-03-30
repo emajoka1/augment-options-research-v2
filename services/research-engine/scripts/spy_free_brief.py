@@ -620,7 +620,7 @@ def validate_invalidation_level(invalidation_price, spot):
     return {'valid': True}
 
 
-def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, spot, context):
+def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, spot, context, greeks=None):
     if not legs or not ticket:
         return {}
 
@@ -631,7 +631,7 @@ def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, s
     rv20 = (context.get('realizedVol') or {}).get('rv20')
     rv_current = max(v for v in [rv10, rv20] if v is not None) if any(v is not None for v in [rv10, rv20]) else None
     iv_current = _to_float((expected_move_payload or {}).get('ivUsed'))
-    theta_per_day = round((ticket.get('target') or 0) / max(dte, 1), 2) if ticket.get('target') is not None else None
+    theta_per_day = _to_float((greeks or {}).get('thetaPerDay'))
     breakeven_days = max(1, round(dte / 2)) if dte not in (None, 999) else None
 
     if candidate_type == 'condor' and len(legs) >= 4:
@@ -665,7 +665,6 @@ def build_counterfactuals(candidate_type, legs, ticket, expected_move_payload, s
         breakeven = ((expected_move_payload or {}).get('breakevens') or [None])[0]
         max_loss = ticket.get('maxLoss')
         required_move = round(max(0, ((breakeven or long_strike) - spot) / spot * 100), 1) if spot and (breakeven or long_strike) else None
-        theta_per_day = round((ticket.get('entryRange', [0,0])[1] - ticket.get('entryRange', [0,0])[0]) / max(dte,1), 2) if ticket.get('entryRange') else None
         vol_drop = 10.0
         vega_loss = round((ticket.get('entryRange', [0])[0] or 0) * 0.15, 2)
         return {
@@ -1781,7 +1780,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         "value": round(em, 2) if em else None,
         "breakevens": [round(x, 2) for x in breakevens],
         "ivUsed": round(iv, 4) if iv is not None else None,
-    }, spot, context)
+    }, spot, context, greeks=greeks)
 
     structure_legs = []
     for leg, leg_def in zip(legs, enriched_leg_defs):
