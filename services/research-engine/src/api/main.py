@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import os
 from pathlib import Path
 from typing import Literal
@@ -37,6 +38,7 @@ LOCAL_SPY_LIVE_STATUS = DXLINK_LIVE_PATHS.status
 LOCAL_SPY_LIVE_MAX_AGE_SECONDS = int(os.environ.get('SPY_LIVE_MAX_AGE_SECONDS', '300'))
 TRIGGER_LOCAL_SPY_LIVE = os.environ.get('SPY_TRIGGER_LIVE_FROM_API', '0').lower() in {'1', 'true', 'yes'}
 MIN_LIVE_CHAIN_POINTS = int(os.environ.get('SPY_MIN_LIVE_CHAIN_POINTS', '8'))
+BRIEF_TIMEOUT_SECONDS = float(os.environ.get('SPY_BRIEF_TIMEOUT_SECONDS', '45'))
 
 
 def _load_live_status() -> dict | None:
@@ -76,6 +78,22 @@ def _trigger_spy_live_snapshot() -> None:
     raise RuntimeError(
         'dxlink daemon output is the canonical live source; start scripts/dxlink_stream_daemon.cjs or set SPY_TRIGGER_LIVE_FROM_API=0'
     )
+
+
+def _assert_brief_inputs_ready() -> dict:
+    live = load_json_file(LOCAL_SPY_LIVE_SNAPSHOT) or {}
+    option_ring = live.get('optionRing') or []
+    data = live.get('data') or {}
+    populated = [row for row in data.values() if isinstance(row, dict) and row.get('mark') is not None and row.get('iv') is not None]
+    if len(option_ring) < MIN_LIVE_CHAIN_POINTS or len(populated) < MIN_LIVE_CHAIN_POINTS:
+        raise HTTPException(status_code=503, detail={
+            'message': 'live options surface still warming up',
+            'optionRingCount': len(option_ring),
+            'rowsWithMarketData': len(populated),
+            'minRequired': MIN_LIVE_CHAIN_POINTS,
+            'snapshotPath': str(LOCAL_SPY_LIVE_SNAPSHOT),
+        })
+    return live
 
 
 
@@ -263,8 +281,16 @@ def risk_estimate(structure_type: str, risk_cap: float, debit: float = 0.0, cred
 def generate_brief(symbol: str):
     if symbol.upper() == 'SPY':
         _assert_daemon_healthy()
+        _assert_brief_inputs_ready()
     try:
-        result = BriefGenerator().generate(symbol)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(BriefGenerator().generate, symbol)
+            result = future.result(timeout=BRIEF_TIMEOUT_SECONDS)
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
+    except FuturesTimeoutError:
+        raise HTTPException(status_code=504, detail={
+            'message': 'brief generation timed out',
+            'timeoutSeconds': BRIEF_TIMEOUT_SECONDS,
+        })
     return result.payload
