@@ -18,6 +18,7 @@ if str(SRC) not in sys.path:
 from ak_system.live_paths import DXLINK_LIVE_PATHS, load_json_file
 from ak_system.risk.estimator import estimate_structure_risk, risk_cap_dollars as shared_risk_cap_dollars
 from ak_system.mc_options.engine import MCEngine, MCEngineConfig
+from ak_system.mc_options.pricer import bs_greeks
 
 CHAIN_PATH = os.environ.get("SPY_CHAIN_PATH", os.path.expanduser("~/lab/data/tastytrade/SPY_nested_chain.json"))
 DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", str(DXLINK_LIVE_PATHS.snapshot))
@@ -650,6 +651,33 @@ def compute_position_greeks(legs, spot, dte, entry_cost=0.0):
         'vegaDollarImpact': round(net_vega * 0.01, 2),
         'dominantRiskFactor': dominant,
     }
+
+
+def enrich_leg_greeks(leg, spot, dte, r=0.03, q=0.013):
+    enriched = dict(leg)
+    gamma = _to_float(enriched.get('gamma'))
+    theta = _to_float(enriched.get('theta'))
+    vega = _to_float(enriched.get('vega'))
+    delta = _to_float(enriched.get('delta'))
+    iv = _to_float(enriched.get('iv'))
+    strike = _to_float(enriched.get('strike'))
+    side = 'call' if str(enriched.get('side')).upper() == 'C' else 'put'
+    expiry_years = max(float(dte or 1) / 365.0, 1e-6)
+
+    if iv is not None and strike is not None and any(v is None for v in [delta, gamma, theta, vega]):
+        try:
+            g = bs_greeks(float(spot), float(strike), r, q, float(iv), expiry_years, side)
+            if delta is None:
+                enriched['delta'] = g.delta
+            if gamma is None:
+                enriched['gamma'] = g.gamma
+            if theta is None:
+                enriched['theta'] = g.theta_daily
+            if vega is None:
+                enriched['vega'] = g.vega
+        except Exception:
+            pass
+    return enriched
 
 
 def expected_move(spot, iv, dte):
@@ -1370,9 +1398,10 @@ def build_trade(candidate_type, legs, spot, vol, context):
     if gates:
         decision = "PASS"
 
+    enriched_leg_defs = [enrich_leg_greeks(leg, spot, dte) for leg in leg_defs]
     final_score = compute_final_score(score, gates)
     greek_entry_cost = debit if candidate_type == 'debit' else credit
-    greeks = compute_position_greeks(leg_defs, spot, dte, entry_cost=greek_entry_cost)
+    greeks = compute_position_greeks(enriched_leg_defs, spot, dte, entry_cost=greek_entry_cost)
 
     counterfactuals = build_counterfactuals(candidate_type, legs, ticket, {
         "value": round(em, 2) if em else None,
@@ -1381,7 +1410,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
     }, spot, context)
 
     structure_legs = []
-    for leg, leg_def in zip(legs, leg_defs):
+    for leg, leg_def in zip(legs, enriched_leg_defs):
         structure_legs.append({
             "symbol": leg.get("symbol"),
             "side": leg.get("side"),
@@ -1392,11 +1421,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "mark": leg.get("mark"),
             "bid": leg.get("bid"),
             "ask": leg.get("ask"),
-            "delta": leg.get("delta"),
-            "gamma": leg.get("gamma"),
-            "theta": leg.get("theta"),
-            "vega": leg.get("vega"),
-            "iv": leg.get("iv"),
+            "delta": leg_def.get("delta", leg.get("delta")),
+            "gamma": leg_def.get("gamma", leg.get("gamma")),
+            "theta": leg_def.get("theta", leg.get("theta")),
+            "vega": leg_def.get("vega", leg.get("vega")),
+            "iv": leg_def.get("iv", leg.get("iv")),
             "openInterest": leg.get("openInterest"),
             "dayVolume": leg.get("dayVolume"),
         })

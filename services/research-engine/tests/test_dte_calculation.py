@@ -445,6 +445,14 @@ def test_compute_position_greeks_surfaces_dominant_risk_and_gamma_class():
     assert 'vegaDollarImpact' in out
 
 
+def test_enrich_leg_greeks_backfills_missing_values_from_bsm():
+    leg = {'side': 'C', 'strike': 650.0, 'iv': 0.25, 'delta': 0.4, 'gamma': None, 'theta': None, 'vega': None}
+    out = sfb.enrich_leg_greeks(leg, 636.0, 18)
+    assert out['gamma'] is not None
+    assert out['theta'] is not None
+    assert out['vega'] is not None
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
