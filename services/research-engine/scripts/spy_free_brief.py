@@ -1014,7 +1014,21 @@ def build_data_quality_dashboard(spot, context, vol, dte_summary, mandatory_miss
     else:
         overall = 'OK'
 
-    recommendation = 'Do not trade until data pipeline errors are resolved' if overall != 'OK' else 'Inputs appear healthy'
+    missing_inputs = [c['input'] for c in checks if c['status'] == 'MISSING']
+    suspect_inputs = [c['input'] for c in checks if c['status'] == 'SUSPECT']
+    error_inputs = [c['input'] for c in checks if c['status'] == 'ERROR']
+
+    if overall == 'OK':
+        recommendation = 'All data inputs valid — system operating normally.'
+    elif overall == 'DEGRADED' and not error_inputs and not suspect_inputs:
+        pretty_missing = ', '.join(missing_inputs) if missing_inputs else 'one or more non-critical inputs'
+        recommendation = f'Regime scoring limited: {pretty_missing} unavailable. Trade recommendations have reduced confidence.'
+    elif overall == 'DEGRADED':
+        affected = ', '.join(suspect_inputs or missing_inputs or ['one or more inputs'])
+        recommendation = f'Data quality degraded: {affected} need review. Trade recommendations have reduced confidence.'
+    else:
+        affected = ', '.join(error_inputs or mandatory_missing or ['critical inputs'])
+        recommendation = f'Data pipeline error detected ({affected}) — do not trade until resolved.'
     return {
         'overall': overall,
         'timestamp': datetime.now(ZoneInfo('Europe/London')).isoformat(timespec='minutes'),

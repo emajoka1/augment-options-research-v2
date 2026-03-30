@@ -361,6 +361,24 @@ def test_candidate_hard_pass_reasons_blocks_loss_model_failures():
     assert reasons == ['loss_model_blocks_trade']
 
 
+def test_build_data_quality_dashboard_distinguishes_missing_inputs_from_pipeline_errors():
+    context = {
+        'regime': {
+            'metrics': [
+                {'metric': 'VIX', 'value': None},
+                {'metric': 'US10Y', 'value': None},
+                {'metric': 'Trend', 'value': 'bullish'},
+            ]
+        },
+        'realizedVol': {'rv10': 0.2},
+    }
+    vol = {'ivCurrent': 0.25}
+    dte_summary = {'nearestDte': 18}
+    out = sfb.build_data_quality_dashboard(635.0, context, vol, dte_summary, [])
+    assert out['overall'] == 'DEGRADED'
+    assert out['recommendation'] == 'Regime scoring limited: vix, us10y unavailable. Trade recommendations have reduced confidence.'
+
+
 def test_set_trade_target_condor_one_dte_uses_80pct_profit_target():
     target, pct = sfb.set_trade_target('condor', 1.18, None, 1.18, 1)
     assert target == 0.24
