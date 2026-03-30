@@ -1367,7 +1367,15 @@ def regime_snapshot(spot, live=None):
         vix_observed_at = datetime.now(timezone.utc).isoformat()
     else:
         vix_change, vix_dir, vix_observed_at = fetch_fred_day_change('VIXCLS')
-    us10y_change, rates_dir, rates_observed_at = fetch_fred_day_change('DGS10')
+    us10y_live = ((live or {}).get('us10y') or {}) if isinstance(live, dict) else {}
+    us10y_last = _to_float(us10y_live.get('mark')) or _to_float(us10y_live.get('last'))
+    us10y_prev_close = _to_float(us10y_live.get('prevDayClosePrice'))
+    if us10y_last is not None and us10y_prev_close is not None:
+        us10y_change = float(us10y_last - us10y_prev_close)
+        rates_dir = 'up' if us10y_change > 0 else ('down' if us10y_change < 0 else 'flat')
+        rates_observed_at = datetime.now(timezone.utc).isoformat()
+    else:
+        us10y_change, rates_dir, rates_observed_at = fetch_fred_day_change('DGS10')
 
     risk_regime = "Risk-on" if trend_up else "Neutral"
 
