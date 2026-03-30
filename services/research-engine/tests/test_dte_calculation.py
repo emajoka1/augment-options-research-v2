@@ -320,6 +320,13 @@ def test_compute_final_score_caps_warning_only_at_75():
     assert out['adjustedTotal'] == 75
 
 
+def test_compute_final_score_treats_directional_mismatch_as_critical():
+    scores = {'Regime': 10, 'Vol': 16, 'Structure': 20, 'Event': 15, 'Execution': 18}
+    out = sfb.compute_final_score(scores, ['directional_mismatch'])
+    assert out['rawTotal'] == 79
+    assert out['adjustedTotal'] == 60
+
+
 def test_set_trade_target_condor_one_dte_uses_80pct_profit_target():
     target, pct = sfb.set_trade_target('condor', 1.18, None, 1.18, 1)
     assert target == 0.24

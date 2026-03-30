@@ -140,6 +140,6 @@ def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys
     tb = payload["TRADE BRIEF"]
 
     assert tb["NoCandidatesReason"] is None
-    assert len(tb["Candidates"]) == 3
+    assert len(tb["Candidates"]) == 2
     assert tb["Candidates"][0]["maxLossPerContract"] is not None
     assert tb["ClosestNearMiss"]["flipHint"]

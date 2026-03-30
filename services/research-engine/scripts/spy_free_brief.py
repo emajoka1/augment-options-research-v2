@@ -103,7 +103,7 @@ TREND_ALIGNMENT = {
 
 CRITICAL_GATES = {
     'expected_move_mismatch', 'mc:ev_gate', 'mc:cvar_worst_gate',
-    'mc:pop_or_pot', 'execution_poor', 'spread_bps_exceeded'
+    'mc:pop_or_pot', 'execution_poor', 'spread_bps_exceeded', 'directional_mismatch'
 }
 WARNING_GATES = {
     'mc:ev_ci_gate', 'score_below_70'
@@ -2165,6 +2165,7 @@ def generate_brief_payload():
                 "maxLossPerContract": None,
                 "structure": _candidate_structure_payload(t, fallback_legs),
             })
+    analyses = [a for a in analyses if (a.get('ticket') is not None) or (a.get('structure') or {}).get('legs')]
     analyses.sort(key=lambda x: (x.get("decision") == "TRADE", x.get("score", {}).get("Total", 0)), reverse=True)
     analyses = analyses[:3]
 
