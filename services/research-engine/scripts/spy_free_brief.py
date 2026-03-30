@@ -381,6 +381,45 @@ def contracts_for_risk(max_loss):
     return int(max_risk_dollars // max_loss)
 
 
+def set_trade_target(strategy_type, entry_credit, entry_debit, max_profit, dte):
+    if strategy_type in ('condor', 'credit'):
+        if dte <= 3:
+            target_pct = 0.80
+        elif dte <= 14:
+            target_pct = 0.50
+        elif dte <= 30:
+            target_pct = 0.40
+        else:
+            target_pct = 0.30
+        target_price = round(float(entry_credit) * (1 - target_pct), 2)
+        return target_price, target_pct
+
+    if strategy_type == 'debit':
+        if dte <= 3:
+            target_pct = 1.30
+        elif dte <= 14:
+            target_pct = 1.50
+        elif dte <= 30:
+            target_pct = 2.00
+        else:
+            target_pct = 2.50
+        target_price = round(float(entry_debit) * target_pct, 2)
+        return target_price, target_pct
+
+    return None, None
+
+
+def validate_pot(pop, pot, strategy_type):
+    if strategy_type in ('condor', 'credit') and pop is not None and pot is not None:
+        if pop > 0.60 and pot < 0.10:
+            return {
+                'warning': 'Target appears unrealistic — PoP is high but PoT is near zero',
+                'suggestion': 'Consider relaxing target (take profits earlier)',
+                'flag': 'target_unrealistic'
+            }
+    return None
+
+
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
@@ -954,12 +993,13 @@ def build_trade(candidate_type, legs, spot, vol, context):
         spread_bps = execution.get("multi_spread_bps")
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
         exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
+        target_price, target_pct = set_trade_target('debit', None, debit, width - debit, dte)
         ticket = {
             "legs": [f"Buy {long_c['symbol']}", f"Sell {short_c['symbol']}"],
             "expiry": long_c["expiry"],
             "entryRange": [round(debit * 0.98, 2), round(debit * 1.03, 2)],
             "maxLoss": round(max_loss, 2),
-            "target": round(min(width * 0.7, debit * 1.6), 2),
+            "target": target_price,
             "stop": round(debit * 0.6, 2),
             "invalidation": f"SPY < {round(min(long_c['strike'], short_c['strike']) - em * 0.2, 2) if em else 'ORL'}",
             "positionSizeContracts": contracts_for_risk(max_loss),
@@ -977,12 +1017,13 @@ def build_trade(candidate_type, legs, spot, vol, context):
         spread_bps = execution.get("multi_spread_bps")
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
         exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
+        target_price, target_pct = set_trade_target('credit', credit, None, credit, dte)
         ticket = {
             "legs": [f"Sell {short_p['symbol']}", f"Buy {long_p['symbol']}"],
             "expiry": short_p["expiry"],
             "entryRange": [round(credit * 0.97, 2), round(credit * 1.03, 2)],
             "maxLoss": round(max_loss, 2),
-            "target": round(credit * 0.5, 2),
+            "target": target_price,
             "stop": round(credit * 1.8, 2),
             "invalidation": f"SPY < {round(short_p['strike'],2)}",
             "positionSizeContracts": contracts_for_risk(max_loss),
@@ -1001,12 +1042,13 @@ def build_trade(candidate_type, legs, spot, vol, context):
         spread_bps = execution.get("multi_spread_bps")
         worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
         exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
+        target_price, target_pct = set_trade_target('condor', credit, None, credit, dte)
         ticket = {
             "legs": [f"Sell {sp['symbol']}", f"Buy {lp['symbol']}", f"Sell {sc['symbol']}", f"Buy {lc['symbol']}"],
             "expiry": sp["expiry"],
             "entryRange": [round(credit * 0.95, 2), round(credit * 1.05, 2)],
             "maxLoss": round(max_loss, 2),
-            "target": round(credit * 0.5, 2),
+            "target": target_price,
             "stop": round(credit * 1.8, 2),
             "invalidation": f"SPY outside [{round(sp['strike'],2)}, {round(sc['strike'],2)}] with momentum",
             "positionSizeContracts": contracts_for_risk(max_loss),
@@ -1259,6 +1301,15 @@ def attach_mc_decision(candidate, legs, spot):
     failed_mc_gates = sorted([f"mc:{k}" for k, v in mc_gates.items() if k != "allow_trade" and v is False])
     existing = [g for g in (candidate.get("gateFailures") or []) if not g.startswith("mc:")]
     candidate["gateFailures"] = existing if mc_result.allow_trade else (existing + failed_mc_gates or existing)
+
+    target_validation = validate_pot(
+        (mc_result.payload.get("metrics") or {}).get("pop"),
+        (mc_result.payload.get("metrics") or {}).get("pot"),
+        candidate.get("type"),
+    )
+    if target_validation:
+        candidate.setdefault("warnings", []).append(target_validation)
+        candidate["gateFailures"] = (candidate.get("gateFailures") or []) + [target_validation["flag"]]
 
     score = candidate.get("score") or {}
     rescored = compute_final_score(score, candidate.get("gateFailures") or [])

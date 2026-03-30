@@ -320,6 +320,24 @@ def test_compute_final_score_caps_warning_only_at_75():
     assert out['adjustedTotal'] == 75
 
 
+def test_set_trade_target_condor_one_dte_uses_80pct_profit_target():
+    target, pct = sfb.set_trade_target('condor', 1.18, None, 1.18, 1)
+    assert target == 0.24
+    assert pct == 0.80
+
+
+def test_set_trade_target_debit_short_dte_is_less_aggressive():
+    target, pct = sfb.set_trade_target('debit', None, 5.0, None, 1)
+    assert target == 6.5
+    assert pct == 1.30
+
+
+def test_validate_pot_flags_unrealistic_short_premium_target():
+    out = sfb.validate_pot(0.752, 0.0, 'condor')
+    assert out is not None
+    assert out['flag'] == 'target_unrealistic'
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
