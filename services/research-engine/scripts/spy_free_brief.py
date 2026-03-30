@@ -76,6 +76,14 @@ REGIME_STRATEGY_FIT = {
     },
 }
 
+CRITICAL_GATES = {
+    'expected_move_mismatch', 'mc:ev_gate', 'mc:cvar_worst_gate',
+    'mc:pop_or_pot', 'execution_poor', 'spread_bps_exceeded'
+}
+WARNING_GATES = {
+    'mc:ev_ci_gate', 'score_below_70'
+}
+
 
 def risk_cap_dollars() -> float:
     return shared_risk_cap_dollars(ACCOUNT_SIZE, RISK_PCT, MAX_RISK_DOLLARS)
@@ -718,6 +726,35 @@ def compute_data_quality_factor(regime_data: dict) -> dict:
     }
 
 
+def compute_final_score(component_scores, gate_results):
+    raw_total = sum(v for k, v in component_scores.items() if k in {"Regime", "Vol", "Structure", "Event", "Execution"})
+    normalized = [str(g) for g in gate_results]
+    critical_gates = [g for g in normalized if g in CRITICAL_GATES]
+    warning_gates = [g for g in normalized if g in WARNING_GATES]
+
+    if len(critical_gates) >= 3:
+        score_cap = 30
+    elif len(critical_gates) >= 2:
+        score_cap = 45
+    elif len(critical_gates) >= 1:
+        score_cap = 60
+    elif len(warning_gates) >= 1:
+        score_cap = 75
+    else:
+        score_cap = 100
+
+    adjusted_total = min(raw_total, score_cap)
+    return {
+        "rawTotal": raw_total,
+        "adjustedTotal": adjusted_total,
+        "gatesPassed": len(gate_results) == 0,
+        "gatePenalty": raw_total - adjusted_total,
+        "criticalGateCount": len(critical_gates),
+        "warningGateCount": len(warning_gates),
+        "components": component_scores,
+    }
+
+
 def compute_vol_edge_score(iv_current, rv10, rv20, strategy_type, max_score=20):
     rv_best = max(v for v in [rv10, rv20] if v is not None) if any(v is not None for v in [rv10, rv20]) else None
     if iv_current is None or rv_best is None or rv_best <= 0:
@@ -1011,6 +1048,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
     if gates:
         decision = "PASS"
 
+    final_score = compute_final_score(score, gates)
+
     counterfactuals = {
         "loseQuicklyIf": "Underlying moves through invalidation before theta/vega thesis materializes",
         "volBreak": "If IV shifts opposite by >2 volatility points vs entry assumption",
@@ -1047,7 +1086,18 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "comparison": "inside" if expected_fit else "outside_or_mismatch",
         },
         "ticket": ticket,
-        "score": score,
+        "score": {
+            **score,
+            "RawTotal": final_score["rawTotal"],
+            "Total": final_score["adjustedTotal"],
+            "AdjustedTotal": final_score["adjustedTotal"],
+            "GatePenalty": final_score["gatePenalty"],
+            "GatesPassed": final_score["gatesPassed"],
+            "CriticalGateCount": final_score["criticalGateCount"],
+            "WarningGateCount": final_score["warningGateCount"],
+            "DisplayText": f"{final_score['adjustedTotal']} (raw: {final_score['rawTotal']}, penalized for {len(gates)} gate failures)" if final_score["gatePenalty"] > 0 else str(final_score["adjustedTotal"]),
+            "Color": "green" if final_score["adjustedTotal"] >= 70 else ("amber" if final_score["adjustedTotal"] >= 50 else "red"),
+        },
         "whys": why,
         "counterfactuals": counterfactuals,
         "decision": decision,
@@ -1209,6 +1259,21 @@ def attach_mc_decision(candidate, legs, spot):
     failed_mc_gates = sorted([f"mc:{k}" for k, v in mc_gates.items() if k != "allow_trade" and v is False])
     existing = [g for g in (candidate.get("gateFailures") or []) if not g.startswith("mc:")]
     candidate["gateFailures"] = existing if mc_result.allow_trade else (existing + failed_mc_gates or existing)
+
+    score = candidate.get("score") or {}
+    rescored = compute_final_score(score, candidate.get("gateFailures") or [])
+    candidate["score"] = {
+        **score,
+        "RawTotal": rescored["rawTotal"],
+        "Total": rescored["adjustedTotal"],
+        "AdjustedTotal": rescored["adjustedTotal"],
+        "GatePenalty": rescored["gatePenalty"],
+        "GatesPassed": rescored["gatesPassed"],
+        "CriticalGateCount": rescored["criticalGateCount"],
+        "WarningGateCount": rescored["warningGateCount"],
+        "DisplayText": f"{rescored['adjustedTotal']} (raw: {rescored['rawTotal']}, penalized for {len(candidate.get('gateFailures') or [])} gate failures)" if rescored["gatePenalty"] > 0 else str(rescored["adjustedTotal"]),
+        "Color": "green" if rescored["adjustedTotal"] >= 70 else ("amber" if rescored["adjustedTotal"] >= 50 else "red"),
+    }
     return candidate
 
 

@@ -298,6 +298,28 @@ def test_classify_vol_regime_recalibrated_elevated_vol():
     assert 1.8 <= out['ivRvRatio'] <= 2.0
 
 
+def test_compute_final_score_caps_three_plus_critical_failures_at_30():
+    scores = {'Regime': 10, 'Vol': 16, 'Structure': 20, 'Event': 15, 'Execution': 18}
+    out = sfb.compute_final_score(scores, ['expected_move_mismatch', 'mc:ev_gate', 'mc:cvar_worst_gate'])
+    assert out['rawTotal'] == 79
+    assert out['adjustedTotal'] == 30
+    assert out['gatePenalty'] == 49
+
+
+def test_compute_final_score_caps_two_critical_failures_at_45():
+    scores = {'Regime': 10, 'Vol': 16, 'Structure': 20, 'Event': 15, 'Execution': 10}
+    out = sfb.compute_final_score(scores, ['expected_move_mismatch', 'mc:ev_gate'])
+    assert out['rawTotal'] == 71
+    assert out['adjustedTotal'] == 45
+
+
+def test_compute_final_score_caps_warning_only_at_75():
+    scores = {'Regime': 10, 'Vol': 16, 'Structure': 20, 'Event': 15, 'Execution': 18}
+    out = sfb.compute_final_score(scores, ['score_below_70'])
+    assert out['rawTotal'] == 79
+    assert out['adjustedTotal'] == 75
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
