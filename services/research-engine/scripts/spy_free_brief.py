@@ -2184,6 +2184,7 @@ def attach_mc_decision(candidate, legs, spot):
         entry_cost_override = None
         if entry_mid is not None:
             entry_cost_override = entry_mid * 100.0 * (-1.0 if candidate.get("type") in {"credit", "condor"} else 1.0)
+        iv_atm_override = _to_float(((candidate.get("expectedMove") or {}).get("ivUsed"))) or _to_float(candidate.get("impliedVol"))
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
             json.dump(snapshot_payload, tmp)
@@ -2201,6 +2202,7 @@ def attach_mc_decision(candidate, legs, spot):
                 strategy_type=strategy_type,
                 strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
                 entry_cost_override=entry_cost_override,
+                iv_atm_override=iv_atm_override,
                 snapshot_file=snapshot_file,
                 write_artifacts=False,
                 output_root=str(ROOT),

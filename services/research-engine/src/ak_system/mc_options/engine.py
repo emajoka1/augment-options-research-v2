@@ -65,6 +65,7 @@ class MCEngineConfig:
     write_artifacts: bool = True
     strategy_name: str | None = None
     entry_cost_override: float | None = None
+    iv_atm_override: float | None = None
 
     @property
     def example(self) -> str:
@@ -307,6 +308,10 @@ class MCEngine:
             ivp = cal.iv
         else:
             _, jump_used, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
+
+        if config.iv_atm_override is not None:
+            ivp.iv_atm = float(config.iv_atm_override)
+            ivp.theta_iv = float(config.iv_atm_override)
 
         rv_contract_pass = rv10 is not None and rv20 is not None
         rv_freshness_sla_seconds = max(0.0, float(config.rv_freshness_sla_seconds))
