@@ -806,6 +806,35 @@ def evaluate_portfolio_context(new_trade, existing_positions, portfolio_value):
     }
 
 
+def extract_confidence_intervals(multi_seed_confidence):
+    ms = multi_seed_confidence or {}
+    if ms.get('confidenceIntervals'):
+        return ms.get('confidenceIntervals')
+    n = ms.get('n_total_paths') or 0
+    ev_mean = ms.get('ev_mean')
+    ev_std = ms.get('ev_std')
+    pop_mean = ms.get('pop_mean')
+    if not n or ev_mean is None or ev_std is None or pop_mean is None:
+        return None
+    z = 1.96
+    ev_se = ev_std / math.sqrt(max(n, 1))
+    pop_se = math.sqrt(max(pop_mean * (1 - pop_mean), 0.0) / max(n, 1))
+    return {
+        'ev': {
+            'value': ev_mean,
+            'ci_low': ev_mean - z * ev_se,
+            'ci_high': ev_mean + z * ev_se,
+        },
+        'pop': {
+            'value': pop_mean,
+            'ci_low': max(0.0, pop_mean - z * pop_se),
+            'ci_high': min(1.0, pop_mean + z * pop_se),
+        },
+        'sampleSize': n,
+        'convergenceCheck': bool((ev_se / abs(ev_mean)) < 0.05) if ev_mean not in (None, 0) else False,
+    }
+
+
 def build_recommendation(analyses, context, mandatory_missing, no_candidates_reason):
     data_quality = (context.get('dataQuality') or {}).get('regime') or {}
     dq_available = data_quality.get('availableInputs', 0)
@@ -1847,12 +1876,14 @@ def attach_mc_decision(candidate, legs, spot):
                 pass
 
     candidate["decisionSource"] = "mc_engine"
+    multi_seed_confidence = mc_result.payload.get("multi_seed_confidence")
     candidate["mc"] = {
         "status": mc_result.payload.get("status"),
         "allowTrade": bool(mc_result.allow_trade),
         "dataQualityStatus": mc_result.data_quality_status,
         "metrics": mc_result.payload.get("metrics"),
-        "multiSeedConfidence": mc_result.payload.get("multi_seed_confidence"),
+        "multiSeedConfidence": multi_seed_confidence,
+        "confidenceIntervals": extract_confidence_intervals(multi_seed_confidence),
         "gates": mc_result.payload.get("gates"),
         "edgeAttribution": mc_result.payload.get("edge_attribution"),
         "breakevens": mc_result.payload.get("breakevens"),

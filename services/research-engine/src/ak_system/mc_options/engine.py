@@ -61,7 +61,6 @@ class MCEngineConfig:
     force_refresh: bool = False
     dq_fail_dedupe_cooldown_minutes: float = 30.0
     rv_freshness_sla_seconds: float = 3600.0
-    allow_local_rv_fallback: bool = False
     output_root: str | None = None
     write_artifacts: bool = True
     strategy_name: str | None = None
@@ -201,22 +200,6 @@ def infer_regime_distribution(model: str, spot: float, iv_atm: float, n_steps: i
     return probs
 
 
-def load_local_returns_fallback(root: Path) -> tuple[np.ndarray | None, str | None, str | None, float | None]:
-    paths = build_paths(root)
-    files = sorted(paths.snapshots.glob("spy_mc_snapshot_*.json"))
-    for f in reversed(files):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            rets = data.get("returns") or []
-            arr = np.array(rets, dtype=float)
-            if arr.size:
-                mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
-                freshness = max(0.0, (datetime.now(timezone.utc) - mtime).total_seconds())
-                return arr, "local_fallback", mtime.isoformat(), freshness
-        except Exception:
-            continue
-    return None, None, None, None
-
 
 def _snapshot_fingerprint(snapshot_file: str | None) -> dict:
     if not snapshot_file:
@@ -290,7 +273,6 @@ class MCEngine:
         compute_metrics_fn = self._dep("compute_metrics", compute_metrics)
         percentiles_fn = self._dep("percentiles", percentiles)
         infer_regime_distribution_fn = self._dep("infer_regime_distribution", infer_regime_distribution)
-        load_local_returns_fallback_fn = self._dep("load_local_returns_fallback", load_local_returns_fallback)
         write_report_json_md_fn = self._dep("write_report_json_md", write_report_json_md)
         compute_breakevens_fn = self._dep("compute_breakevens", compute_breakevens)
         get_artifact_base_fn = self._dep("get_artifact_base", lambda root, paths: get_service_artifact_dir(root))
@@ -324,18 +306,6 @@ class MCEngine:
             ivp = cal.iv
         else:
             _, jump_used, _, ivp = defaults_from_market(spot=spot, iv_atm=0.25)
-
-        if (rv10 is None or rv20 is None) and config.allow_local_rv_fallback:
-            fallback_rets, fb_source, fb_asof, fb_freshness = load_local_returns_fallback_fn(cwd)
-            if fallback_rets is not None:
-                fb_rv10 = realized_vol(fallback_rets, 10, dt)
-                fb_rv20 = realized_vol(fallback_rets, 20, dt)
-                if fb_rv10 is not None and fb_rv20 is not None:
-                    rv10, rv20 = fb_rv10, fb_rv20
-                    rv_source = fb_source
-                    rv_window_bars = int(fallback_rets.size)
-                    rv_asof = fb_asof
-                    rv_freshness_seconds = fb_freshness
 
         rv_contract_pass = rv10 is not None and rv20 is not None
         rv_freshness_sla_seconds = max(0.0, float(config.rv_freshness_sla_seconds))
@@ -446,19 +416,41 @@ class MCEngine:
         cvar_stress_vals = np.array([m.cvar95 for m in stress_batch])
         n_total_paths = int(n_batches * n_paths_batch)
 
+        z = 1.96
+        n_batches_float = float(len(ev_real_vals)) if len(ev_real_vals) else 1.0
+        ev_mean = float(np.mean(ev_real_vals))
+        ev_std = float(np.std(ev_real_vals))
+        ev_se = ev_std / np.sqrt(n_batches_float)
+        pop_mean = float(np.mean(pop_real_vals))
+        pop_se = float(np.sqrt(max(pop_mean * (1.0 - pop_mean), 0.0) / n_total_paths)) if n_total_paths > 0 else 0.0
+
         multi_seed_confidence = {
             "n_batches": int(n_batches),
             "paths_per_batch": int(n_paths_batch),
             "n_total_paths": n_total_paths,
-            "ev_mean": float(np.mean(ev_real_vals)),
-            "ev_std": float(np.std(ev_real_vals)),
+            "ev_mean": ev_mean,
+            "ev_std": ev_std,
             "ev_5th_percentile": float(np.percentile(ev_real_vals, 5)),
-            "pop_mean": float(np.mean(pop_real_vals)),
+            "pop_mean": pop_mean,
             "cvar_mean": float(np.mean(cvar_real_vals)),
             "cvar_worst": float(np.min(cvar_stress_vals)),
             "ev_mid": float(np.mean(ev_mid_vals)),
-            "ev_real": float(np.mean(ev_real_vals)),
+            "ev_real": ev_mean,
             "ev_stress": float(np.mean(ev_stress_vals)),
+            "confidenceIntervals": {
+                "ev": {
+                    "value": ev_mean,
+                    "ci_low": float(ev_mean - z * ev_se),
+                    "ci_high": float(ev_mean + z * ev_se),
+                },
+                "pop": {
+                    "value": pop_mean,
+                    "ci_low": float(max(0.0, pop_mean - z * pop_se)),
+                    "ci_high": float(min(1.0, pop_mean + z * pop_se)),
+                },
+                "sampleSize": n_total_paths,
+                "convergenceCheck": bool((ev_se / abs(ev_mean)) < 0.05) if ev_mean != 0 else False,
+            },
         }
 
         entry_iv_state = evolve_iv_state(ivp, n_steps=n_steps, dt=dt, returns=np.zeros(n_steps), seed=config.seed)
