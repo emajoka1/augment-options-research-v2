@@ -561,7 +561,7 @@ class MCEngine:
             "stress": {"spread_bps": config.spread_bps, "slippage_bps": config.slippage_bps, "partial_fill_prob": config.partial_fill_prob},
             "metrics": metrics.__dict__,
             "multi_seed_confidence": {k: v for k, v in multi_seed_confidence.items() if k in {"n_batches", "paths_per_batch", "n_total_paths", "ev_mean", "ev_std", "ev_5th_percentile", "pop_mean", "cvar_mean", "cvar_worst"}},
-            "distribution_percentiles": percentiles_fn(last_pnl_real),
+            "distribution_percentiles": percentiles_fn(pnl_real_full if pnl_real_full.size else np.array([], dtype=float)),
             "sensitivity": {
                 "wide_spread_slippage_ev": float(np.mean(ev_stress_vals)),
                 "wide_spread_slippage_pop": float(np.mean([m.pop for m in stress_batch])),
