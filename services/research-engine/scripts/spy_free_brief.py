@@ -29,6 +29,7 @@ LIVE_SNAPSHOT_SCRIPT = os.environ.get("SPY_LIVE_SCRIPT", str(ROOT / "scripts" / 
 DXLINK_CANDLES_SCRIPT = os.environ.get("DXLINK_CANDLES_SCRIPT", str(ROOT / "scripts" / "dxlink_candles.cjs"))
 DXLINK_CANDLE_OUT = os.environ.get("DXLINK_CANDLE_OUT", str(DXLINK_LIVE_PATHS.candles))
 DXLINK_DAILY_CLOSES_OUT = os.environ.get("DXLINK_DAILY_CLOSES_OUT", str(DXLINK_LIVE_PATHS.daily_closes))
+DXLINK_DAILY_BACKFILL_SCRIPT = os.environ.get("DXLINK_DAILY_BACKFILL_SCRIPT", str(ROOT / "scripts" / "backfill_daily_closes.py"))
 DXLINK_CANDLE_SYMBOL = os.environ.get("DXLINK_CANDLE_SYMBOL", "SPY{=5m}")
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_CLOSE_ET = dt_time(16, 0)
@@ -474,6 +475,27 @@ def _load_dxlink_candles() -> list[float]:
             closes_from_daily.append(value)
     if closes_from_daily:
         return closes_from_daily
+
+    try:
+        subprocess.run(
+            [sys.executable, DXLINK_DAILY_BACKFILL_SCRIPT],
+            check=True,
+            cwd=str(ROOT),
+            env=os.environ.copy(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        daily_data = load_json_file(Path(DXLINK_DAILY_CLOSES_OUT)) or {}
+        closes_from_daily = []
+        for row in daily_data.get("closes") or []:
+            value = _to_float((row or {}).get("close"))
+            if value is not None and math.isfinite(value):
+                closes_from_daily.append(value)
+        if closes_from_daily:
+            return closes_from_daily
+    except Exception:
+        pass
 
     data = load_json_file(Path(DXLINK_CANDLE_OUT)) or {}
     candles = data.get("candles") or []
