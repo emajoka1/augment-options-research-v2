@@ -24,12 +24,21 @@ class MCResults:
 
 def compute_metrics(pl: np.ndarray, touch_flags: np.ndarray | None = None) -> MCResults:
     pl = np.asarray(pl, dtype=float)
+    if touch_flags is not None:
+        touch_flags = np.asarray(touch_flags, dtype=float)
+        if touch_flags.shape != pl.shape:
+            raise ValueError("touch_flags must match pl shape")
     wins = pl[pl > 0]
     losses = pl[pl <= 0]
 
     ev = float(np.mean(pl))
     pop = float(np.mean(pl > 0))
-    pot = float(np.mean(touch_flags)) if touch_flags is not None else 0.0
+    if touch_flags is not None:
+        pot = float(np.mean((touch_flags > 0) & (pl > 0)))
+    else:
+        pot = 0.0
+    if pot > pop + 1e-12:
+        raise AssertionError("PoT cannot exceed PoP")
 
     gross_win = float(np.sum(wins)) if wins.size else 0.0
     gross_loss = float(-np.sum(losses)) if losses.size else 0.0

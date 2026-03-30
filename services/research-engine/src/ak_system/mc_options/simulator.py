@@ -101,6 +101,7 @@ def simulate_strategy_paths(
     seed: int = 42,
     event_risk_high: bool = False,
     jump_params: JumpDiffusionParams | None = None,
+    entry_cost_override: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
     heston_var = None
@@ -158,6 +159,9 @@ def simulate_strategy_paths(
                 px = _exec_price(mid, "sell", friction, rng)
                 entry_cost -= px * leg.qty
 
+        if entry_cost_override is not None:
+            entry_cost = float(entry_cost_override)
+
         final_val = entry_mid
         iv_shift = 0.0
         entry_abs = max(abs(entry_cost), 1e-6)
@@ -194,11 +198,18 @@ def simulate_strategy_paths(
 
         # exit execution at final value with friction
         exit_val = 0.0
-        tau_end = max(strategy.expiry_years - n_steps * dt, 1e-6)
         t_used = min(n_steps, t if 't' in locals() else n_steps)
-        iv_map_end = {leg.strike: surface_iv(path[t_used], leg.strike, tau_end, iv_state, t_used, iv_params) for leg in strategy.legs}
-        for leg in strategy.legs:
-            mid = bs_price(path[t_used], leg.strike, r, q, iv_map_end[leg.strike], tau_end, leg.option_type)
+        tau_used = max(strategy.expiry_years - t_used * dt, 1e-6)
+        tau_by_leg_end = {
+            idx: max((leg.expiry_years if leg.expiry_years is not None else strategy.expiry_years) - t_used * dt, 1e-6)
+            for idx, leg in enumerate(strategy.legs)
+        }
+        iv_map_end = {
+            leg.strike: surface_iv(path[t_used], leg.strike, tau_by_leg_end[idx], iv_state, t_used, iv_params)
+            for idx, leg in enumerate(strategy.legs)
+        }
+        for idx, leg in enumerate(strategy.legs):
+            mid = bs_price(path[t_used], leg.strike, r, q, iv_map_end[leg.strike], tau_by_leg_end[idx], leg.option_type)
             # closing side opposite of opening side
             if leg.side == "long":
                 px = _exec_price(mid, "sell", friction, rng)

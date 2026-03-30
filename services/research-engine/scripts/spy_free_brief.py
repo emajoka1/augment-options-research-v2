@@ -1924,24 +1924,25 @@ def _candidate_structure_payload(candidate_type, legs):
 
 
 def _strategy_legs_for_candidate(candidate_type, legs):
+    contract_multiplier = 100
     if candidate_type == "debit":
         long_c, short_c = legs
         return [
-            {"side": "long", "option_type": "call", "strike": float(long_c["strike"]), "qty": 1},
-            {"side": "short", "option_type": "call", "strike": float(short_c["strike"]), "qty": 1},
+            {"side": "long", "option_type": "call", "strike": float(long_c["strike"]), "qty": contract_multiplier},
+            {"side": "short", "option_type": "call", "strike": float(short_c["strike"]), "qty": contract_multiplier},
         ]
     if candidate_type == "credit":
         short_p, long_p = legs
         return [
-            {"side": "short", "option_type": "put", "strike": float(short_p["strike"]), "qty": 1},
-            {"side": "long", "option_type": "put", "strike": float(long_p["strike"]), "qty": 1},
+            {"side": "short", "option_type": "put", "strike": float(short_p["strike"]), "qty": contract_multiplier},
+            {"side": "long", "option_type": "put", "strike": float(long_p["strike"]), "qty": contract_multiplier},
         ]
     sp, lp, sc, lc = legs
     return [
-        {"side": "short", "option_type": "put", "strike": float(sp["strike"]), "qty": 1},
-        {"side": "long", "option_type": "put", "strike": float(lp["strike"]), "qty": 1},
-        {"side": "short", "option_type": "call", "strike": float(sc["strike"]), "qty": 1},
-        {"side": "long", "option_type": "call", "strike": float(lc["strike"]), "qty": 1},
+        {"side": "short", "option_type": "put", "strike": float(sp["strike"]), "qty": contract_multiplier},
+        {"side": "long", "option_type": "put", "strike": float(lp["strike"]), "qty": contract_multiplier},
+        {"side": "short", "option_type": "call", "strike": float(sc["strike"]), "qty": contract_multiplier},
+        {"side": "long", "option_type": "call", "strike": float(lc["strike"]), "qty": contract_multiplier},
     ]
 
 
@@ -2012,6 +2013,16 @@ def attach_mc_decision(candidate, legs, spot):
 
     snapshot_file = None
     try:
+        entry_range = (candidate.get("ticket") or {}).get("entryRange") or []
+        entry_mid = None
+        if len(entry_range) >= 2 and all(v is not None for v in entry_range[:2]):
+            entry_mid = (float(entry_range[0]) + float(entry_range[1])) / 2.0
+        elif entry_range:
+            entry_mid = _to_float(entry_range[0])
+        entry_cost_override = None
+        if entry_mid is not None:
+            entry_cost_override = entry_mid * 100.0 * (-1.0 if candidate.get("type") in {"credit", "condor"} else 1.0)
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
             json.dump(snapshot_payload, tmp)
             snapshot_file = tmp.name
@@ -2026,6 +2037,7 @@ def attach_mc_decision(candidate, legs, spot):
                 paths_per_batch=max(100, MC_PATHS_PER_BATCH),
                 strategy_type=strategy_type,
                 strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
+                entry_cost_override=entry_cost_override,
                 snapshot_file=snapshot_file,
                 write_artifacts=False,
                 output_root=str(ROOT),
