@@ -38,12 +38,13 @@ MIN_OI = int(os.environ.get("SPY_MIN_OI", "1000"))
 MIN_VOL = int(os.environ.get("SPY_MIN_VOL", "100"))
 MAX_SPREAD_PCT = float(os.environ.get("SPY_MAX_SPREAD_PCT", "0.10"))
 MULTI_LEG_SPREAD_PCT_THRESHOLD = float(os.environ.get("SPY_MULTI_LEG_MAX_SPREAD_PCT", "0.05"))
+MULTI_LEG_SPREAD_PCT_REJECT = float(os.environ.get("SPY_MULTI_LEG_REJECT_SPREAD_PCT", "0.20"))
 ACCOUNT_SIZE = float(os.environ.get("SPY_ACCOUNT_SIZE", "10000"))
 RISK_PCT = float(os.environ.get("SPY_RISK_PCT", "0.025"))
 MAX_RISK_DOLLARS = float(os.environ.get("SPY_MAX_RISK_DOLLARS", "250"))
 MIN_DEBIT = float(os.environ.get("SPY_MIN_DEBIT", "0.05"))
 MIN_CREDIT = float(os.environ.get("SPY_MIN_CREDIT", "0.05"))
-MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "25"))
+MAX_SPREAD_BPS = float(os.environ.get("SPY_MAX_SPREAD_BPS", "1500"))
 MC_N_BATCHES = int(os.environ.get("SPY_BRIEF_MC_N_BATCHES", "2"))
 MC_PATHS_PER_BATCH = int(os.environ.get("SPY_BRIEF_MC_PATHS_PER_BATCH", "250"))
 MC_DT_DAYS = float(os.environ.get("SPY_BRIEF_MC_DT_DAYS", "0.5"))
@@ -164,6 +165,58 @@ def spread_pct(row):
     if b is None or a is None or m in (None, 0):
         return None
     return max(0.0, (a - b) / m)
+
+
+def compute_execution_quality(legs, leg_actions):
+    leg_metrics = []
+    signed_mid_total = 0.0
+    total_spread_cost = 0.0
+    for leg, action in zip(legs, leg_actions):
+        bid = _to_float(leg.get("bid"))
+        ask = _to_float(leg.get("ask"))
+        oi = _to_int(leg.get("openInterest")) or 0
+        volume = _to_int(leg.get("dayVolume")) or 0
+        if bid is None or ask is None:
+            mid = None
+            spread = None
+            spread_pct_value = float("inf")
+            spread_bps_value = float("inf")
+        else:
+            mid = (bid + ask) / 2.0
+            spread = max(0.0, ask - bid)
+            spread_pct_value = ((spread / mid) * 100.0) if mid and mid > 0 else float("inf")
+            spread_bps_value = spread_pct_value * 100.0
+            total_spread_cost += spread
+            signed_mid_total += mid * (1.0 if action == "sell" else -1.0)
+
+        liquid = oi > 1000 and volume > 500
+        leg_metrics.append({
+            "symbol": leg.get("symbol"),
+            "bid": bid,
+            "ask": ask,
+            "mid": mid,
+            "spread": spread,
+            "spread_pct": None if not math.isfinite(spread_pct_value) else spread_pct_value,
+            "spread_bps": None if not math.isfinite(spread_bps_value) else spread_bps_value,
+            "oi": oi,
+            "volume": volume,
+            "liquid": liquid,
+        })
+
+    valid_leg_spreads = [m["spread_pct"] for m in leg_metrics if m.get("spread_pct") is not None]
+    worst_leg_spread_pct = max(valid_leg_spreads) if valid_leg_spreads else None
+    avg_leg_spread_pct = (sum(valid_leg_spreads) / len(valid_leg_spreads)) if valid_leg_spreads else None
+    net_mid = abs(signed_mid_total)
+    multi_spread_pct = ((total_spread_cost / net_mid) * 100.0) if net_mid > 0 else float("inf")
+
+    return {
+        "per_leg": leg_metrics,
+        "worst_leg_spread_pct": worst_leg_spread_pct,
+        "avg_leg_spread_pct": avg_leg_spread_pct,
+        "multi_spread_pct": multi_spread_pct,
+        "multi_spread_bps": multi_spread_pct * 100.0 if math.isfinite(multi_spread_pct) else None,
+        "all_legs_liquid": all(m["liquid"] for m in leg_metrics),
+    }
 
 
 def _to_float(v):
@@ -746,9 +799,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
         be = float(long_c["strike"]) + debit
         breakevens = [be]
         expected_fit = (hi is not None and be <= hi)
-        spread_multi = ((long_c.get("ask") - long_c.get("bid")) + (short_c.get("ask") - short_c.get("bid"))) / max(0.01, debit)
-        spread_bps = spread_multi * 10000.0
-        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD and spread_bps <= MAX_SPREAD_BPS
+        execution = compute_execution_quality([long_c, short_c], ["buy", "sell"])
+        spread_multi = (execution["multi_spread_pct"] or float("inf")) / 100.0 if execution.get("multi_spread_pct") is not None else float("inf")
+        spread_bps = execution.get("multi_spread_bps")
+        worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
+        exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         ticket = {
             "legs": [f"Buy {long_c['symbol']}", f"Sell {short_c['symbol']}"],
             "expiry": long_c["expiry"],
@@ -767,9 +822,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
         be = float(short_p["strike"]) - credit
         breakevens = [be]
         expected_fit = (lo is not None and be <= spot and be >= lo - em * 0.5)
-        spread_multi = ((short_p.get("ask") - short_p.get("bid")) + (long_p.get("ask") - long_p.get("bid"))) / max(0.01, credit)
-        spread_bps = spread_multi * 10000.0
-        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD and spread_bps <= MAX_SPREAD_BPS
+        execution = compute_execution_quality([short_p, long_p], ["sell", "buy"])
+        spread_multi = (execution["multi_spread_pct"] or float("inf")) / 100.0 if execution.get("multi_spread_pct") is not None else float("inf")
+        spread_bps = execution.get("multi_spread_bps")
+        worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
+        exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         ticket = {
             "legs": [f"Sell {short_p['symbol']}", f"Buy {long_p['symbol']}"],
             "expiry": short_p["expiry"],
@@ -789,9 +846,11 @@ def build_trade(candidate_type, legs, spot, vol, context):
         be_high = float(sc["strike"]) + credit
         breakevens = [be_low, be_high]
         expected_fit = (lo is not None and hi is not None and be_low <= lo and be_high >= hi)
-        spread_multi = sum((l.get("ask") - l.get("bid")) for l in [sp, lp, sc, lc]) / max(0.01, credit)
-        spread_bps = spread_multi * 10000.0
-        exec_ok = spread_multi <= MULTI_LEG_SPREAD_PCT_THRESHOLD and spread_bps <= MAX_SPREAD_BPS
+        execution = compute_execution_quality([sp, lp, sc, lc], ["sell", "buy", "sell", "buy"])
+        spread_multi = (execution["multi_spread_pct"] or float("inf")) / 100.0 if execution.get("multi_spread_pct") is not None else float("inf")
+        spread_bps = execution.get("multi_spread_bps")
+        worst_leg_spread_pct = execution.get("worst_leg_spread_pct")
+        exec_ok = bool(execution.get("all_legs_liquid")) and (worst_leg_spread_pct is not None and worst_leg_spread_pct < 15.0) and (execution.get("multi_spread_pct") is not None and execution.get("multi_spread_pct") < (MULTI_LEG_SPREAD_PCT_REJECT * 100.0))
         ticket = {
             "legs": [f"Sell {sp['symbol']}", f"Buy {lp['symbol']}", f"Sell {sc['symbol']}", f"Buy {lc['symbol']}"],
             "expiry": sp["expiry"],
@@ -812,7 +871,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
     score = score_components({"type": candidate_type, "maxLoss": max_loss, "breakevens": breakevens}, context, vol, exec_ok, event_ok)
 
     why = [
-        f"Execution: spread_pct_multi={round(spread_multi*100,2)}% threshold<{MULTI_LEG_SPREAD_PCT_THRESHOLD*100:.2f}% | spread_bps={round(spread_bps,1)} max_bps<={MAX_SPREAD_BPS} => {'Accept' if exec_ok else 'Reject'}",
+        f"Execution: worst_leg_spread_pct={round(worst_leg_spread_pct,2) if worst_leg_spread_pct is not None else None}% | avg_leg_spread_pct={round(execution.get('avg_leg_spread_pct'),2) if execution.get('avg_leg_spread_pct') is not None else None}% | multi_spread_pct={round(execution.get('multi_spread_pct'),2) if execution.get('multi_spread_pct') is not None else None}% => {'Accept' if exec_ok else 'Reject'}",
         f"Vol Edge: ivCurrent={round(vol.get('ivCurrent') or 0,4)} rv10={round(context['realizedVol'].get('rv10') or 0,4)} rv20={round(context['realizedVol'].get('rv20') or 0,4)} => {vol.get('volLabel')}",
         f"ExpectedMove: em={round(em,2) if em else None} bounds=[{round(lo,2) if lo else None},{round(hi,2) if hi else None}] breakevens={','.join(str(round(x,2)) for x in breakevens)} => {'fit' if expected_fit else 'no_fit'}",
     ]
@@ -833,7 +892,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         gates.append("min_debit_not_met")
     if candidate_type in ("credit", "condor") and credit < MIN_CREDIT:
         gates.append("min_credit_not_met")
-    if spread_bps > MAX_SPREAD_BPS:
+    if spread_bps is not None and spread_bps > MAX_SPREAD_BPS:
         gates.append("spread_bps_exceeded")
 
     if gates:
@@ -888,7 +947,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
             "legs": structure_legs,
             "pricing": {
                 "spreadPctMulti": round(spread_multi * 100, 2),
-                "spreadBps": round(spread_bps, 1),
+                "spreadBps": round(spread_bps, 1) if spread_bps is not None else None,
+                "execution": execution,
                 "entryDebit": round(debit, 2) if candidate_type == "debit" else None,
                 "entryCredit": round(credit, 2) if candidate_type in ("credit", "condor") else None,
                 "width": round(width, 2) if candidate_type in ("debit", "credit") else round(wing, 2),

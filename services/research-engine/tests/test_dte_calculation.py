@@ -153,6 +153,34 @@ def test_vol_state_ivcurrent_within_leg_band():
     assert 0.5 <= vol['classifier']['ivRvRatio'] <= 10.0
 
 
+def test_compute_execution_quality_for_tight_condor_legs():
+    legs = [
+        {'symbol': 'P1', 'bid': 1.14, 'ask': 1.16, 'openInterest': 5000, 'dayVolume': 1500},
+        {'symbol': 'P2', 'bid': 0.54, 'ask': 0.56, 'openInterest': 5000, 'dayVolume': 1500},
+        {'symbol': 'C1', 'bid': 1.14, 'ask': 1.16, 'openInterest': 5000, 'dayVolume': 1500},
+        {'symbol': 'C2', 'bid': 0.54, 'ask': 0.56, 'openInterest': 5000, 'dayVolume': 1500},
+    ]
+    quality = sfb.compute_execution_quality(legs, ['sell', 'buy', 'sell', 'buy'])
+    assert quality['all_legs_liquid'] is True
+    assert quality['worst_leg_spread_pct'] < 5.0
+    assert quality['avg_leg_spread_pct'] < 5.0
+    assert quality['multi_spread_pct'] < 10.0
+
+
+def test_build_trade_condor_not_rejected_by_tight_spreads_alone():
+    legs = [
+        {'expiry': '2026-03-31', 'dte': 1, 'strike': 625.0, 'side': 'P', 'symbol': 'P1', 'bid': 1.14, 'ask': 1.16, 'mark': 1.15, 'delta': -0.18, 'iv': 0.30, 'openInterest': 5000, 'dayVolume': 1500},
+        {'expiry': '2026-03-31', 'dte': 1, 'strike': 620.0, 'side': 'P', 'symbol': 'P2', 'bid': 0.54, 'ask': 0.56, 'mark': 0.55, 'delta': -0.10, 'iv': 0.31, 'openInterest': 5000, 'dayVolume': 1500},
+        {'expiry': '2026-03-31', 'dte': 1, 'strike': 645.0, 'side': 'C', 'symbol': 'C1', 'bid': 1.14, 'ask': 1.16, 'mark': 1.15, 'delta': 0.18, 'iv': 0.29, 'openInterest': 5000, 'dayVolume': 1500},
+        {'expiry': '2026-03-31', 'dte': 1, 'strike': 650.0, 'side': 'C', 'symbol': 'C2', 'bid': 0.54, 'ask': 0.56, 'mark': 0.55, 'delta': 0.10, 'iv': 0.30, 'openInterest': 5000, 'dayVolume': 1500},
+    ]
+    trade = sfb.build_trade('condor', legs, 636.0, {'ivCurrent': 0.30, 'volLabel': 'Neutral', 'classifier': {}}, {'regime': {'riskState': 'Neutral'}, 'realizedVol': {'rv10': 0.2, 'rv20': 0.2}})
+    assert 'spread_bps_exceeded' not in (trade.get('gateFailures') or [])
+    execution = ((trade.get('structure') or {}).get('pricing') or {}).get('execution') or {}
+    assert execution.get('multi_spread_pct') is not None
+    assert execution.get('multi_spread_pct') < 10.0
+
+
 def test_load_dxlink_candles_collapses_intraday_to_daily_closes(tmp_path, monkeypatch):
     candle_path = tmp_path / 'dxlink_live_candles.json'
     daily_path = tmp_path / 'missing_daily.json'
