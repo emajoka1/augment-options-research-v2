@@ -123,13 +123,22 @@ function pickContracts(chain, spotGuess) {
   const center = round5(spotGuess || 600);
   const picks = STRIKE_OFFSETS.map((off) => center + off);
   const out = [];
+  const now = new Date();
+  const computeDte = (expiryValue) => {
+    if (!expiryValue) return null;
+    const expiryAtClose = new Date(`${expiryValue}T16:00:00-04:00`);
+    if (Number.isNaN(expiryAtClose.getTime())) return null;
+    const deltaSeconds = (expiryAtClose.getTime() - now.getTime()) / 1000;
+    if (deltaSeconds <= 0) return 0;
+    return Math.max(0, Math.floor(deltaSeconds / 86400));
+  };
   for (const e of exp) {
     const byStrike = new Map((e.strikes||[]).map(s => [Number(s['strike-price']), s]));
     for (const st of picks) {
       const row = byStrike.get(st);
       if (!row) continue;
-      if (row['call-streamer-symbol']) out.push({expiry:e['expiration-date'], dte:e['days-to-expiration'], strike:st, side:'C', symbol:row['call-streamer-symbol']});
-      if (row['put-streamer-symbol']) out.push({expiry:e['expiration-date'], dte:e['days-to-expiration'], strike:st, side:'P', symbol:row['put-streamer-symbol']});
+      if (row['call-streamer-symbol']) out.push({expiry:e['expiration-date'], dte:computeDte(e['expiration-date']), strike:st, side:'C', symbol:row['call-streamer-symbol']});
+      if (row['put-streamer-symbol']) out.push({expiry:e['expiration-date'], dte:computeDte(e['expiration-date']), strike:st, side:'P', symbol:row['put-streamer-symbol']});
     }
   }
   return out.slice(0, MAX_CONTRACTS);

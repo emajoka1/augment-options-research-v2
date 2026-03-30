@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -44,6 +45,10 @@ def ensure_state() -> None:
         'r': DEFAULT_R,
         'q': DEFAULT_Q,
         'legs_text': json.dumps(DEFAULT_LEGS, indent=2),
+        'live_auto_refresh': True,
+        'live_refresh_seconds': 5,
+        'last_refresh_at': None,
+        'previous_live_generated_at': None,
         'last_health': None,
         'last_live_status': None,
         'last_chain': None,
@@ -123,13 +128,200 @@ def render_status(code: int, payload: Any, success_text: str) -> None:
 
 
 def download_json_button(label: str, filename: str, payload: Any) -> None:
-    st.download_button(
-        label,
-        data=json.dumps(payload, indent=2),
-        file_name=filename,
-        mime='application/json',
-        use_container_width=True,
-    )
+    try:
+        data = json.dumps(payload, indent=2, default=str)
+    except Exception:
+        data = str(payload)
+    st.download_button(label, data=data, file_name=filename, mime='application/json')
+
+
+def candidate_heading(candidate: dict[str, Any], idx: int) -> str:
+    candidate_type = str(candidate.get('type', 'unknown')).replace('_', ' ').title()
+    decision = candidate.get('decision', '—')
+    ticket = candidate.get('ticket') or {}
+    ticket_legs = ticket.get('legs') or []
+    structure = candidate.get('structure') or {}
+    structure_legs = structure.get('legs') or []
+
+    def format_expiry(value: Any) -> str:
+        if not value or not isinstance(value, str):
+            return ''
+        try:
+            dt = datetime.fromisoformat(value)
+            return dt.strftime('%d %b')
+        except Exception:
+            return value
+
+    if structure_legs:
+        rendered_legs: list[str] = []
+        candidate_kind = str(candidate.get('type', '')).lower()
+        for leg_index, leg in enumerate(structure_legs):
+            if not isinstance(leg, dict):
+                continue
+            opt_side = str(leg.get('side', '')).upper()
+            strike = leg.get('strike')
+            expiry = format_expiry(leg.get('expiry'))
+            if strike is None or opt_side not in {'P', 'C'}:
+                continue
+            if candidate_kind == 'debit':
+                action = 'Buy' if leg_index == 0 else 'Sell'
+            elif candidate_kind == 'credit':
+                action = 'Sell' if leg_index == 0 else 'Buy'
+            elif candidate_kind == 'condor':
+                action = 'Sell' if leg_index in {0, 2} else 'Buy'
+            else:
+                action = 'Leg'
+            leg_text = f"{action} {strike:g}{opt_side}"
+            if expiry:
+                leg_text += f" ({expiry})"
+            rendered_legs.append(leg_text)
+        if rendered_legs:
+            return f"Candidate {idx}: {candidate_type} · {decision} · {' / '.join(rendered_legs)}"
+
+    if ticket_legs and all(isinstance(leg, str) for leg in ticket_legs):
+        legs_text = ' / '.join(str(leg) for leg in ticket_legs)
+        return f"Candidate {idx}: {candidate_type} · {decision} · {legs_text}"
+    return f"Candidate {idx}: {candidate_type} · {decision}"
+
+
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+
+def format_elapsed_from_iso(value: Any) -> str:
+    if not value or not isinstance(value, str):
+        return '—'
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        delta = datetime.now(timezone.utc) - dt
+        seconds = max(int(delta.total_seconds()), 0)
+    except Exception:
+        return '—'
+    if seconds < 60:
+        return f'{seconds}s ago'
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f'{minutes}m {sec}s ago'
+    hours, minutes = divmod(minutes, 60)
+    return f'{hours}h {minutes}m ago'
+
+
+def refresh_live_panels(base: str, symbol: str, snapshot_path: str, *, force: bool = False) -> None:
+    if force:
+        cached_live_status.clear()
+        cached_chain.clear()
+        cached_surface.clear()
+    st.session_state['last_live_status'] = api_get(base, '/v1/live-status')
+    if st.session_state.get('last_chain') is not None:
+        params = {'snapshot_path': snapshot_path} if snapshot_path else None
+        st.session_state['last_chain'] = api_get(base, f'/v1/chain/{symbol}', params=params)
+    if st.session_state.get('last_surface') is not None:
+        params = {'snapshot_path': snapshot_path} if snapshot_path else None
+        st.session_state['last_surface'] = api_get(base, f'/v1/vol-surface/{symbol}', params=params)
+    st.session_state['last_refresh_at'] = now_utc_iso()
+
+
+def render_live_status_panel() -> None:
+    live_status_result = st.session_state.get('last_live_status')
+    if not live_status_result:
+        st.info('No live status fetched yet.')
+        return
+
+    live_code, live_payload = live_status_result
+    if live_code == 200 and isinstance(live_payload, dict):
+        health = live_payload.get('health') or {}
+        generated_at = live_payload.get('generatedAt')
+        previous_generated_at = st.session_state.get('previous_live_generated_at')
+        changed = bool(generated_at and generated_at != previous_generated_at)
+        if generated_at:
+            st.session_state['previous_live_generated_at'] = generated_at
+
+        freshness_cols = st.columns(5)
+        freshness_cols[0].metric('Daemon health', 'OK' if health.get('ok') and not health.get('stale') else 'DEGRADED')
+        freshness_cols[1].metric('Connection', live_payload.get('connectionState', '—'))
+        freshness_cols[2].metric('Auth', live_payload.get('authState', '—'))
+        freshness_cols[3].metric('Daemon update', generated_at or '—', delta='new tick' if changed else None)
+        freshness_cols[4].metric('UI refresh', st.session_state.get('last_refresh_at') or '—', delta=format_elapsed_from_iso(st.session_state.get('last_refresh_at')))
+
+        meta_cols = st.columns(4)
+        meta_cols[0].metric('Snapshot ID', live_payload.get('snapshotId', '—'))
+        meta_cols[1].metric('Active candle', live_payload.get('activeCandleSymbol', '—'))
+        meta_cols[2].metric('Options with data', live_payload.get('symbolsWithData', '—'))
+        meta_cols[3].metric('Daemon freshness', format_elapsed_from_iso(generated_at))
+
+        if health.get('ok') and not health.get('stale'):
+            status_text = f"DXLink daemon healthy — active candle symbol: {live_payload.get('activeCandleSymbol', '—')}"
+            if changed:
+                st.success(status_text + ' · live payload just updated.')
+            else:
+                st.info(status_text + ' · waiting for next tick.')
+        else:
+            st.warning(f'DXLink daemon degraded: {health}')
+
+        with st.expander('Live daemon status'):
+            st.json(live_payload)
+    else:
+        st.warning(f'DXLink daemon status unavailable: {live_payload}')
+
+
+def render_live_refresh_fragment(base: str, symbol: str, snapshot_path: str) -> None:
+    auto_refresh_enabled = st.session_state.get('live_auto_refresh', True)
+    refresh_seconds = int(st.session_state.get('live_refresh_seconds', 5) or 5)
+
+    if hasattr(st, 'fragment'):
+        @st.fragment(run_every=f'{refresh_seconds}s' if auto_refresh_enabled else None)
+        def _fragment() -> None:
+            if auto_refresh_enabled:
+                refresh_live_panels(base, symbol, snapshot_path, force=True)
+            render_live_status_panel()
+
+        _fragment()
+    else:
+        if auto_refresh_enabled and st.button('Refresh live status now', key='manual_live_refresh_fallback'):
+            refresh_live_panels(base, symbol, snapshot_path, force=True)
+        render_live_status_panel()
+
+
+def render_live_dataframe(result: tuple[int, Any] | None, kind: str, symbol: str) -> None:
+    if not result:
+        return
+
+    code, payload = result
+    if not (200 <= code < 300 and isinstance(payload, dict)):
+        st.json(payload)
+        return
+
+    if kind == 'chain':
+        col1, col2, col3 = st.columns(3)
+        col1.metric('Symbol', payload.get('symbol', '—'))
+        col2.metric('Spot', payload.get('spot', '—'))
+        col3.metric('Source', payload.get('source', '—'))
+
+        strikes = payload.get('strikes') or []
+        ivs = payload.get('ivs') or []
+        expiry_days = payload.get('expiry_days') or [None] * len(strikes)
+        df = pd.DataFrame({'strike': strikes, 'iv': ivs, 'expiry_days': expiry_days})
+        st.dataframe(df, use_container_width=True)
+        if not df.empty:
+            chart_df = df[['strike', 'iv']].set_index('strike')
+            st.line_chart(chart_df)
+        download_json_button('Download chain JSON', f"{symbol.lower()}_chain.json", payload)
+        return
+
+    if kind == 'surface':
+        col1, col2, col3 = st.columns(3)
+        col1.metric('IV ATM', round(float(payload.get('iv_atm', 0.0)), 4))
+        col2.metric('Skew', round(float(payload.get('skew', 0.0)), 4))
+        col3.metric('Curvature', round(float(payload.get('curv', 0.0)), 4))
+
+        strikes = payload.get('strikes') or []
+        ivs = payload.get('ivs') or []
+        fitted = payload.get('fitted_ivs') or []
+        df = pd.DataFrame({'strike': strikes, 'observed_iv': ivs, 'fitted_iv': fitted})
+        st.dataframe(df, use_container_width=True)
+        if not df.empty:
+            st.line_chart(df.set_index('strike')[['observed_iv', 'fitted_iv']])
+        download_json_button('Download surface JSON', f"{symbol.lower()}_surface.json", payload)
 
 
 with st.sidebar:
@@ -137,6 +329,13 @@ with st.sidebar:
     api_base = st.text_input('API base URL', key='api_base').rstrip('/')
     symbol = st.text_input('Ticker', key='symbol').strip().upper() or DEFAULT_SYMBOL
     snapshot_path = st.text_input('Optional snapshot path', key='snapshot_path').strip()
+    st.markdown('---')
+    st.subheader('Live refresh')
+    st.checkbox('Auto-refresh live views', key='live_auto_refresh', help='Continuously re-poll live status, plus any loaded chain and vol-surface views.')
+    st.number_input('Refresh every (seconds)', min_value=2, max_value=60, step=1, key='live_refresh_seconds')
+    if st.button('Refresh live data now', use_container_width=True):
+        refresh_live_panels(api_base, symbol, snapshot_path, force=True)
+        st.success('Live views refreshed.')
     st.markdown('---')
     if st.button('Check health', use_container_width=True):
         st.session_state['last_health'] = cached_health(api_base)
@@ -156,25 +355,9 @@ with st.sidebar:
 
 if st.session_state.get('last_live_status') is None:
     st.session_state['last_live_status'] = cached_live_status(api_base)
+    st.session_state['last_refresh_at'] = now_utc_iso()
 
-live_status_result = st.session_state.get('last_live_status')
-if live_status_result:
-    live_code, live_payload = live_status_result
-    if live_code == 200 and isinstance(live_payload, dict):
-        health = live_payload.get('health') or {}
-        status_cols = st.columns(4)
-        status_cols[0].metric('Daemon health', 'OK' if health.get('ok') and not health.get('stale') else 'DEGRADED')
-        status_cols[1].metric('Connection', live_payload.get('connectionState', '—'))
-        status_cols[2].metric('Auth', live_payload.get('authState', '—'))
-        status_cols[3].metric('Last update', live_payload.get('generatedAt', '—'))
-        if health.get('ok') and not health.get('stale'):
-            st.success(f"DXLink daemon healthy — active candle symbol: {live_payload.get('activeCandleSymbol', '—')}")
-        else:
-            st.warning(f"DXLink daemon degraded: {health}")
-        with st.expander('Live daemon status'):
-            st.json(live_payload)
-    else:
-        st.warning(f'DXLink daemon status unavailable: {live_payload}')
+render_live_refresh_fragment(api_base, symbol, snapshot_path)
 
 health = st.session_state.get('last_health')
 if health:
@@ -196,20 +379,9 @@ with chain_tab:
         code, payload = result
         render_status(code, payload, 'Chain loaded.')
         if 200 <= code < 300 and isinstance(payload, dict):
-            col1, col2, col3 = st.columns(3)
-            col1.metric('Symbol', payload.get('symbol', '—'))
-            col2.metric('Spot', payload.get('spot', '—'))
-            col3.metric('Source', payload.get('source', '—'))
-
-            strikes = payload.get('strikes') or []
-            ivs = payload.get('ivs') or []
-            expiry_days = payload.get('expiry_days') or [None] * len(strikes)
-            df = pd.DataFrame({'strike': strikes, 'iv': ivs, 'expiry_days': expiry_days})
-            st.dataframe(df, use_container_width=True)
-            if not df.empty:
-                chart_df = df[['strike', 'iv']].set_index('strike')
-                st.line_chart(chart_df)
-            download_json_button('Download chain JSON', f"{symbol.lower()}_chain.json", payload)
+            if st.session_state.get('live_auto_refresh'):
+                st.caption('Live mode: this chain view will refresh automatically while auto-refresh is enabled.')
+            render_live_dataframe(result, 'chain', symbol)
         else:
             st.json(payload)
     else:
@@ -219,7 +391,22 @@ with brief_tab:
     st.subheader('Trade brief')
     if st.button('Load brief', key='load_brief'):
         st.session_state['last_brief'] = api_post(api_base, f'/v1/brief/{symbol}', payload={})
+    if st.session_state.get('live_auto_refresh') and st.session_state.get('last_brief') is not None:
+        st.session_state['last_brief'] = api_post(api_base, f'/v1/brief/{symbol}', payload={})
     result = st.session_state.get('last_brief')
+    if result and isinstance(result, tuple) and len(result) == 2:
+        code, payload = result
+        if 200 <= code < 300 and isinstance(payload, dict):
+            brief_probe = payload.get('TRADE BRIEF', {})
+            missing_probe = set(brief_probe.get('missingRequiredData') or [])
+            stale_missing = {'spot', 'option_rows', 'ivCurrent'}
+            if missing_probe & stale_missing:
+                refreshed = api_post(api_base, f'/v1/brief/{symbol}', payload={})
+                if isinstance(refreshed, tuple) and len(refreshed) == 2:
+                    r_code, r_payload = refreshed
+                    if 200 <= r_code < 300 and isinstance(r_payload, dict):
+                        st.session_state['last_brief'] = refreshed
+                        result = refreshed
     if result:
         code, payload = result
         render_status(code, payload, 'Trade brief loaded.')
@@ -230,6 +417,20 @@ with brief_tab:
                 col1.metric('Ticker', brief.get('Ticker', symbol))
                 col2.metric('Spot', brief.get('Spot', '—'))
                 col3.metric('Decision', brief.get('Final Decision', '—'))
+
+                vol_state = brief.get('Volatility State') or {}
+                regime = brief.get('Regime') or {}
+                rv10 = None
+                rv20 = None
+                for metric in regime.get('metrics') or []:
+                    if not isinstance(metric, dict):
+                        continue
+                v1, v2, v3, v4 = st.columns(4)
+                v1.metric('IV current', vol_state.get('ivCurrent', '—'))
+                v2.metric('RV10', vol_state.get('ivCurrent', None) - vol_state.get('ivVsRv10', None) if vol_state.get('ivCurrent') is not None and vol_state.get('ivVsRv10') is not None else '—')
+                v3.metric('RV20', vol_state.get('ivCurrent', None) - vol_state.get('ivVsRv20', None) if vol_state.get('ivCurrent') is not None and vol_state.get('ivVsRv20') is not None else '—')
+                v4.metric('Vol regime', (vol_state.get('classifier') or {}).get('regime', '—'))
+                st.caption(f"IV-RV10: {vol_state.get('ivVsRv10', '—')} · IV-RV20: {vol_state.get('ivVsRv20', '—')}")
 
                 if brief.get('NoCandidatesReason'):
                     st.warning(f"No-candidate reason: {brief['NoCandidatesReason']}")
@@ -266,7 +467,7 @@ with brief_tab:
                     for idx, candidate in enumerate(candidates, start=1):
                         if not isinstance(candidate, dict):
                             continue
-                        with st.expander(f"Candidate {idx}: {candidate.get('type', 'unknown')} · {candidate.get('decision', '—')}"):
+                        with st.expander(candidate_heading(candidate, idx)):
                             mc = candidate.get('mc') or {}
                             metrics = mc.get('metrics') or {}
                             multi = mc.get('multiSeedConfidence') or {}
@@ -351,19 +552,9 @@ with surface_tab:
         code, payload = result
         render_status(code, payload, 'Vol surface loaded.')
         if 200 <= code < 300 and isinstance(payload, dict):
-            col1, col2, col3 = st.columns(3)
-            col1.metric('IV ATM', round(float(payload.get('iv_atm', 0.0)), 4))
-            col2.metric('Skew', round(float(payload.get('skew', 0.0)), 4))
-            col3.metric('Curvature', round(float(payload.get('curv', 0.0)), 4))
-
-            strikes = payload.get('strikes') or []
-            ivs = payload.get('ivs') or []
-            fitted = payload.get('fitted_ivs') or []
-            df = pd.DataFrame({'strike': strikes, 'observed_iv': ivs, 'fitted_iv': fitted})
-            st.dataframe(df, use_container_width=True)
-            if not df.empty:
-                st.line_chart(df.set_index('strike')[['observed_iv', 'fitted_iv']])
-            download_json_button('Download surface JSON', f"{symbol.lower()}_surface.json", payload)
+            if st.session_state.get('live_auto_refresh'):
+                st.caption('Live mode: this vol-surface view will refresh automatically while auto-refresh is enabled.')
+            render_live_dataframe(result, 'surface', symbol)
         else:
             st.json(payload)
     else:

@@ -102,9 +102,7 @@ def test_no_candidates_message_exact_and_diagnostics_present(monkeypatch, capsys
     monkeypatch.setattr(sfb, "load_live", lambda _p: {"underlying": {"mark": 500.0}, "finishedAt": now})
     monkeypatch.setattr(sfb, "load_chain", lambda _p: {})
     monkeypatch.setattr(sfb, "live_is_fresh", lambda _live: True)
-    monkeypatch.setattr(sfb, "get_spot_from_cboe_quote", lambda _s: (500.0, "test", now))
     monkeypatch.setattr(sfb, "get_spot_from_dx", lambda _p: None)
-    monkeypatch.setattr(sfb, "get_spot_from_yahoo", lambda: (None, None, None))
     monkeypatch.setattr(sfb, "watchlist_from_live", lambda _l: rows)
     monkeypatch.setattr(
         sfb,

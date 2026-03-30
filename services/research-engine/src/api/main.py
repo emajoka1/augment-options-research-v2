@@ -88,7 +88,7 @@ def _load_local_spy_live_snapshot() -> ChainSnapshot | None:
     payload = load_json_file(LOCAL_SPY_LIVE_SNAPSHOT)
     if not payload:
         return None
-    contracts = payload.get('contracts') or []
+    contracts = payload.get('contracts') or payload.get('optionRing') or []
     data = payload.get('data') or {}
     underlying = payload.get('underlying') or {}
 

@@ -3,10 +3,10 @@ import json
 import math
 import os
 import subprocess
+import tempfile
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time as dt_time
 from zoneinfo import ZoneInfo
-from urllib.request import Request, urlopen
 from pathlib import Path
 import sys
 
@@ -15,18 +15,22 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from ak_system.live_paths import DXLINK_LIVE_PATHS, load_json_file
 from ak_system.risk.estimator import estimate_structure_risk, risk_cap_dollars as shared_risk_cap_dollars
 from ak_system.mc_options.engine import MCEngine, MCEngineConfig
 
 CHAIN_PATH = os.environ.get("SPY_CHAIN_PATH", os.path.expanduser("~/lab/data/tastytrade/SPY_nested_chain.json"))
-DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", os.path.expanduser("~/lab/data/tastytrade/dxlink_snapshot.json"))
-LIVE_PATH = os.environ.get("SPY_LIVE_PATH", os.path.expanduser("~/lab/data/tastytrade/spy_live_snapshot.json"))
+DXLINK_PATH = os.environ.get("SPY_DXLINK_PATH", str(DXLINK_LIVE_PATHS.snapshot))
+LIVE_PATH = os.environ.get("SPY_LIVE_PATH", str(DXLINK_LIVE_PATHS.snapshot))
+LIVE_STATUS_PATH = str(DXLINK_LIVE_PATHS.status)
 LIVE_MAX_AGE_MINUTES = int(os.environ.get("SPY_LIVE_MAX_AGE_MINUTES", "5"))
-TRIGGER_LIVE_REFRESH = os.environ.get("SPY_TRIGGER_LIVE_REFRESH", "1").lower() in {"1", "true", "yes"}
+TRIGGER_LIVE_REFRESH = os.environ.get("SPY_TRIGGER_LIVE_REFRESH", "0").lower() in {"1", "true", "yes"}
 LIVE_SNAPSHOT_SCRIPT = os.environ.get("SPY_LIVE_SCRIPT", str(ROOT / "scripts" / "spy_live_snapshot.cjs"))
 DXLINK_CANDLES_SCRIPT = os.environ.get("DXLINK_CANDLES_SCRIPT", str(ROOT / "scripts" / "dxlink_candles.cjs"))
-DXLINK_CANDLE_OUT = os.environ.get("DXLINK_CANDLE_OUT", os.path.expanduser("~/lab/data/tastytrade/dxlink_candles.json"))
+DXLINK_CANDLE_OUT = os.environ.get("DXLINK_CANDLE_OUT", str(DXLINK_LIVE_PATHS.candles))
 DXLINK_CANDLE_SYMBOL = os.environ.get("DXLINK_CANDLE_SYMBOL", "SPY{=5m}")
+MARKET_TZ = ZoneInfo("America/New_York")
+MARKET_CLOSE_ET = dt_time(16, 0)
 
 MIN_OI = int(os.environ.get("SPY_MIN_OI", "1000"))
 MIN_VOL = int(os.environ.get("SPY_MIN_VOL", "100"))
@@ -50,10 +54,6 @@ def risk_cap_dollars() -> float:
     return shared_risk_cap_dollars(ACCOUNT_SIZE, RISK_PCT, MAX_RISK_DOLLARS)
 
 
-def http_json(url: str, timeout: int = 8):
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
 
 
 def load_chain(path: str):
@@ -64,18 +64,15 @@ def load_chain(path: str):
 
 
 def load_live(path):
-    if not os.path.exists(path):
+    live_path = Path(path)
+    if not live_path.exists():
         return None
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except Exception:
-        return None
+    return load_json_file(live_path)
 
 
 def live_is_fresh(live: dict, max_age_minutes: int = 5) -> bool:
     try:
-        ts = live.get("finishedAt") or live.get("startedAt")
+        ts = live.get("generatedAt") or live.get("finishedAt") or live.get("startedAt")
         if not ts:
             return False
         t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -84,9 +81,17 @@ def live_is_fresh(live: dict, max_age_minutes: int = 5) -> bool:
         return False
 
 
+def _live_is_fresh_compat(live: dict, max_age_minutes: int = LIVE_MAX_AGE_MINUTES) -> bool:
+    try:
+        return bool(live_is_fresh(live, max_age_minutes))
+    except TypeError:
+        return bool(live_is_fresh(live))
+
+
+
 def refresh_live_snapshot_if_needed(path: str = LIVE_PATH, max_age_minutes: int = LIVE_MAX_AGE_MINUTES):
     live = load_live(path)
-    if live and live_is_fresh(live, max_age_minutes=max_age_minutes):
+    if live and _live_is_fresh_compat(live, max_age_minutes):
         return live
     if not TRIGGER_LIVE_REFRESH:
         return live
@@ -105,41 +110,11 @@ def refresh_live_snapshot_if_needed(path: str = LIVE_PATH, max_age_minutes: int 
     return load_live(path)
 
 
-def refresh_dxlink_returns_fallback() -> tuple[list[float] | None, str | None]:
-    try:
-        subprocess.run(
-            ["node", DXLINK_CANDLES_SCRIPT],
-            check=True,
-            cwd=str(ROOT),
-            env={**os.environ, "DXLINK_CANDLE_SYMBOL": DXLINK_CANDLE_SYMBOL, "DXLINK_CANDLE_OUT": DXLINK_CANDLE_OUT},
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except Exception:
-        return None, None
 
-    try:
-        with open(DXLINK_CANDLE_OUT) as f:
-            data = json.load(f)
-        candles = data.get("candles") or []
-        closes = [float(c.get("close")) for c in candles if c.get("close") not in (None, "")]
-        if len(closes) < 21:
-            return None, None
-        rets = []
-        for a, b in zip(closes[:-1], closes[1:]):
-            if a and b and a > 0 and b > 0:
-                rets.append(math.log(b / a))
-        if len(rets) < 20:
-            return None, None
-        snapshots_dir = ROOT.parent.parent / "agent" / "snapshots"
-        snapshots_dir.mkdir(parents=True, exist_ok=True)
-        out = snapshots_dir / f"spy_mc_snapshot_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
-        payload = {"source": "dxlink_candles", "symbol": DXLINK_CANDLE_SYMBOL, "returns": rets}
-        out.write_text(json.dumps(payload), encoding="utf-8")
-        return rets, str(out)
-    except Exception:
-        return None, None
+def load_live_status(path: str = LIVE_STATUS_PATH):
+    return load_json_file(Path(path))
+
+
 
 
 def get_spot_from_dx(path: str, max_age_minutes: int = 5):
@@ -161,116 +136,10 @@ def get_spot_from_dx(path: str, max_age_minutes: int = 5):
     return None
 
 
-def get_spot_from_cboe_quote(symbol: str = "SPY"):
-    try:
-        d = http_json(f"https://cdn.cboe.com/api/global/delayed_quotes/quotes/{symbol}.json")
-        q = d.get("data", {})
-        b, a = q.get("bid"), q.get("ask")
-        if isinstance(b, (int, float)) and isinstance(a, (int, float)) and b > 0 and a > 0:
-            return (float(b) + float(a)) / 2.0, "cboe_bid_ask_mid", q.get("last_trade_time")
-        lp = q.get("last_trade_price") or q.get("last")
-        if isinstance(lp, (int, float)) and lp > 0:
-            return float(lp), "cboe_last", q.get("last_trade_time")
-    except Exception:
-        pass
-    return None, None, None
 
 
-def get_spot_from_yahoo():
-    try:
-        d = http_json("https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1m&range=1d")
-        m = d["chart"]["result"][0].get("meta", {})
-        v = float(m.get("regularMarketPrice") or m.get("previousClose"))
-        return v, "yahoo_regular_market", None
-    except Exception:
-        return None, None, None
 
 
-def get_yahoo_series(sym: str, rng: str = "3mo", interval: str = "1d"):
-    try:
-        d = http_json(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval={interval}&range={rng}")
-        q = d["chart"]["result"][0]["indicators"]["quote"][0]
-        return q
-    except Exception:
-        return None
-
-
-def _norm_cdf(x: float) -> float:
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-
-def _bs_delta(spot: float, strike: float, t_years: float, rate: float, iv: float, side: str):
-    try:
-        if not spot or not strike or t_years <= 0 or iv <= 0:
-            return None
-        d1 = (math.log(spot / strike) + (rate + 0.5 * iv * iv) * t_years) / (iv * math.sqrt(t_years))
-        if side == "C":
-            return _norm_cdf(d1)
-        return _norm_cdf(d1) - 1.0
-    except Exception:
-        return None
-
-
-def watchlist_from_cboe_options(spot: float, symbol: str = "SPY"):
-    try:
-        payload = http_json(f"https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json")
-        options = payload.get("data", {}).get("options", [])
-        now = datetime.now(timezone.utc)
-        rows = []
-
-        parsed = []
-        for o in options:
-            osym = o.get("option")
-            if not osym or len(osym) < 15:
-                continue
-            try:
-                exp = datetime.strptime(osym[len(symbol):len(symbol)+6], "%y%m%d").date()
-                side = osym[len(symbol)+6]
-                strike = int(osym[-8:]) / 1000.0
-            except Exception:
-                continue
-            dte = max(0, (exp - now.date()).days)
-            parsed.append((dte, abs(strike - (spot or strike)), side, strike, osym, o))
-
-        parsed.sort(key=lambda x: (x[0], x[1]))
-        selected = parsed[:80]
-        for dte, _, side, strike, osym, o in selected:
-            bid = o.get("bid")
-            ask = o.get("ask")
-            last = o.get("last_trade_price")
-            iv = o.get("iv")
-            mark = None
-            if isinstance(bid, (int, float)) and isinstance(ask, (int, float)):
-                mark = (float(bid) + float(ask)) / 2.0
-            elif isinstance(last, (int, float)):
-                mark = float(last)
-
-            t_years = max(dte / 365.0, 1.0 / 365.0)
-            row = {
-                "expiry": datetime.strptime(osym[len(symbol):len(symbol)+6], "%y%m%d").date().isoformat(),
-                "dte": dte,
-                "strike": strike,
-                "side": side,
-                "symbol": osym,
-                "bid": float(bid) if isinstance(bid, (int, float)) else None,
-                "ask": float(ask) if isinstance(ask, (int, float)) else None,
-                "mark": mark,
-                "last": float(last) if isinstance(last, (int, float)) else None,
-                "delta": float(o.get("delta")) if isinstance(o.get("delta"), (int, float)) else _bs_delta(float(spot), strike, t_years, 0.04, float(iv), side),
-                "iv": float(iv) if isinstance(iv, (int, float)) else None,
-                "openInterest": int(o.get("open_interest")) if isinstance(o.get("open_interest"), (int, float)) else None,
-                "dayVolume": int(o.get("volume")) if isinstance(o.get("volume"), (int, float)) else None,
-                "confidence": "cboe-delayed-public",
-            }
-            sp = spread_pct(row)
-            row["spreadPct"] = round(sp, 4) if sp is not None else None
-            row["liquid"] = is_liquid(row)
-            rows.append(row)
-
-        rows.sort(key=lambda r: (r.get("dte", 999), abs((r.get("strike") or 0) - (spot or 0))))
-        return rows
-    except Exception:
-        return []
 
 
 def ann_realized_vol(closes, window=10):
@@ -311,6 +180,46 @@ def _to_int(v):
         return None
 
 
+def current_market_now() -> datetime:
+    override = os.environ.get("SPY_BRIEF_NOW_ET")
+    if override:
+        dt = datetime.fromisoformat(override)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=MARKET_TZ)
+        return dt.astimezone(MARKET_TZ)
+    return datetime.now(MARKET_TZ)
+
+
+def compute_dte(expiry_value, now_dt: datetime | None = None) -> int | None:
+    if not expiry_value:
+        return None
+    try:
+        expiry_date = datetime.fromisoformat(str(expiry_value)).date()
+    except Exception:
+        return None
+    now_et = (now_dt or current_market_now()).astimezone(MARKET_TZ)
+    expiry_dt = datetime.combine(expiry_date, MARKET_CLOSE_ET, tzinfo=MARKET_TZ)
+    delta_seconds = (expiry_dt - now_et).total_seconds()
+    if delta_seconds <= 0:
+        return 0
+    return max(0, int(delta_seconds // 86400))
+
+
+def dte_sanity_warning(expiry_value, dte: int | None) -> str | None:
+    if dte is None:
+        return None
+    try:
+        expiry_date = datetime.fromisoformat(str(expiry_value)).date()
+        is_weekly = expiry_date.weekday() == 4
+    except Exception:
+        is_weekly = False
+    if is_weekly and dte > 60:
+        return f"Suspicious DTE for weekly expiry {expiry_value}: {dte}"
+    if dte > 400:
+        return f"Suspicious DTE for expiry {expiry_value}: {dte}"
+    return None
+
+
 def is_liquid(row):
     sp = spread_pct(row)
     return (
@@ -324,20 +233,43 @@ def is_liquid(row):
 def watchlist_from_live(live):
     rows = []
     data = live.get("data", {})
-    for c in live.get("contracts", []):
+    contracts = live.get("contracts", []) or live.get("optionRing", [])
+    now_et = current_market_now()
+    for c in contracts:
         d = data.get(c["symbol"], {})
+        recomputed_dte = compute_dte(c.get("expiry"), now_et)
         row = {
-            "expiry": c["expiry"], "dte": _to_int(c.get("dte")), "strike": _to_float(c.get("strike")), "side": c["side"], "symbol": c["symbol"],
+            "expiry": c["expiry"], "dte": recomputed_dte, "strike": _to_float(c.get("strike")), "side": c["side"], "symbol": c["symbol"],
             "bid": _to_float(d.get("bid")), "ask": _to_float(d.get("ask")), "mark": _to_float(d.get("mark")), "last": _to_float(d.get("last")),
             "delta": _to_float(d.get("delta")), "iv": _to_float(d.get("iv")), "openInterest": _to_int(d.get("openInterest")), "dayVolume": _to_int(d.get("dayVolume")),
             "confidence": "dxlink-live",
         }
+        warning = dte_sanity_warning(c.get("expiry"), recomputed_dte)
+        if warning:
+            row["dteWarning"] = warning
         sp = spread_pct(row)
         row["spreadPct"] = round(sp, 4) if sp is not None else None
         row["liquid"] = is_liquid(row)
         rows.append(row)
     rows.sort(key=lambda r: (r.get("dte", 999), -(r.get("dayVolume") or 0), -(r.get("openInterest") or 0)))
     return rows
+
+
+def canonical_dte_summary(rows):
+    valid = [r for r in rows if r.get("expiry") and r.get("dte") is not None]
+    if not valid:
+        return None
+    grouped: dict[str, int] = {}
+    for row in valid:
+        expiry = str(row["expiry"])
+        dte = int(row["dte"])
+        grouped[expiry] = min(grouped.get(expiry, dte), dte)
+    return {
+        "generatedAtEt": current_market_now().isoformat(timespec="seconds"),
+        "byExpiry": grouped,
+        "nearestExpiry": min(grouped, key=lambda k: grouped[k]) if grouped else None,
+        "nearestDte": min(grouped.values()) if grouped else None,
+    }
 
 
 def choose_leg(rows, side, dte_lo, dte_hi, d_lo, d_hi, require_liquid=True):
@@ -363,7 +295,108 @@ def contracts_for_risk(max_loss):
 def expected_move(spot, iv, dte):
     if not spot or not iv or dte is None:
         return None
-    return spot * iv * math.sqrt(max(dte, 1) / 365.0)
+    em = spot * iv * math.sqrt(max(dte, 1) / 365.0)
+    assert em > 0, "EM must be positive"
+    assert em < spot * 0.5, f"EM {em} > 50% of spot {spot} — likely a bug"
+    assert (spot - em) > 0, f"Lower 1SD {spot - em} is negative — impossible for equity"
+    assert (spot + em) > spot, "Upper 1SD must be above spot"
+    assert (spot - em) < spot, "Lower 1SD must be below spot"
+    return em
+
+
+def atm_iv_for_expected_move(rows, spot, dte):
+    if not rows or spot in (None, 0) or dte is None:
+        return None
+
+    same_dte = [r for r in rows if r.get("iv") is not None and r.get("strike") is not None and r.get("dte") == dte]
+    pool = same_dte or [r for r in rows if r.get("iv") is not None and r.get("strike") is not None]
+    if not pool:
+        return None
+
+    valid = []
+    for row in pool:
+        iv = _to_float(row.get("iv"))
+        strike = _to_float(row.get("strike"))
+        if iv is None or strike is None:
+            continue
+        if iv <= 0:
+            continue
+        if iv > 1.5:
+            iv = iv / 100.0 if iv > 3.0 else iv
+        valid.append({**row, "iv": iv, "strike": strike})
+
+    if not valid:
+        return None
+
+    below = [r for r in valid if r["strike"] <= spot]
+    above = [r for r in valid if r["strike"] >= spot]
+    nearest_below = min(below, key=lambda r: (abs(r["strike"] - spot), r.get("dte", 999))) if below else None
+    nearest_above = min(above, key=lambda r: (abs(r["strike"] - spot), r.get("dte", 999))) if above else None
+
+    if nearest_below and nearest_above:
+        if nearest_below["strike"] == nearest_above["strike"]:
+            return (nearest_below["iv"] + nearest_above["iv"]) / 2.0
+        dist_total = abs(spot - nearest_below["strike"]) + abs(nearest_above["strike"] - spot)
+        if dist_total == 0:
+            return (nearest_below["iv"] + nearest_above["iv"]) / 2.0
+        weight_below = abs(nearest_above["strike"] - spot) / dist_total
+        weight_above = abs(spot - nearest_below["strike"]) / dist_total
+        return nearest_below["iv"] * weight_below + nearest_above["iv"] * weight_above
+
+    single = nearest_below or nearest_above
+    return single["iv"] if single else None
+
+
+def normalize_iv_decimal(iv_value):
+    iv = _to_float(iv_value)
+    if iv is None:
+        return None
+    if iv > 2.0:
+        iv = iv / 100.0
+    assert 0.01 <= iv <= 2.00, f"ivCurrent {iv} is outside valid range — unit error"
+    return iv
+
+
+def aggregate_iv_current(rows, spot):
+    if not rows or spot in (None, 0):
+        return None
+
+    valid = []
+    for row in rows:
+        strike = _to_float(row.get("strike"))
+        iv = normalize_iv_decimal(row.get("iv")) if row.get("iv") is not None else None
+        dte = _to_int(row.get("dte"))
+        side = row.get("side")
+        if strike is None or iv is None or dte is None or side not in {"P", "C"}:
+            continue
+        if dte <= 0:
+            continue
+        valid.append({**row, "strike": strike, "iv": iv, "dte": dte})
+
+    if not valid:
+        return None
+
+    expiries = sorted({(r.get("expiry"), r.get("dte")) for r in valid if r.get("expiry")})
+    best_pair = None
+    for expiry, dte in expiries:
+        same_expiry = [r for r in valid if r.get("expiry") == expiry and r.get("dte") == dte]
+        puts = [r for r in same_expiry if r.get("side") == "P"]
+        calls = [r for r in same_expiry if r.get("side") == "C"]
+        if not puts or not calls:
+            continue
+        atm_put = min(puts, key=lambda r: abs(r["strike"] - spot))
+        atm_call = min(calls, key=lambda r: abs(r["strike"] - spot))
+        score = abs(atm_put["strike"] - spot) + abs(atm_call["strike"] - spot)
+        if best_pair is None or (dte, score) < (best_pair[0], best_pair[1]):
+            best_pair = (dte, score, atm_put, atm_call)
+
+    if best_pair:
+        _, _, atm_put, atm_call = best_pair
+        return (atm_put["iv"] + atm_call["iv"]) / 2.0
+
+    weighted_numer = sum(r["iv"] * max(1, _to_int(r.get("dayVolume")) or 0) for r in valid)
+    weighted_denom = sum(max(1, _to_int(r.get("dayVolume")) or 0) for r in valid)
+    return (weighted_numer / weighted_denom) if weighted_denom else None
 
 
 def build_candidates(rows):
@@ -428,29 +461,42 @@ def build_candidates(rows):
     }
 
 
-def regime_snapshot(spot):
-    q_spy = get_yahoo_series("SPY", "3mo", "1d") or {}
-    q_vix = get_yahoo_series("%5EVIX", "1mo", "1d") or {}
-    q_tnx = get_yahoo_series("%5ETNX", "1mo", "1d") or {}
+def _load_dxlink_candles() -> list[float]:
+    """Load SPY close prices from canonical dxlink candle snapshot."""
+    data = load_json_file(Path(DXLINK_CANDLE_OUT)) or {}
+    candles = data.get("candles") or []
+    closes: list[float] = []
+    for candle in candles:
+        raw = candle.get("close")
+        if raw in (None, ""):
+            continue
+        try:
+            value = float(raw)
+        except Exception:
+            continue
+        if not math.isfinite(value):
+            continue
+        closes.append(value)
+    return closes
 
-    closes = [x for x in (q_spy.get("close") or []) if isinstance(x, (int, float))]
-    highs = [x for x in (q_spy.get("high") or []) if isinstance(x, (int, float))]
-    lows = [x for x in (q_spy.get("low") or []) if isinstance(x, (int, float))]
+
+def regime_snapshot(spot):
+    closes = _load_dxlink_candles()
+
     ma20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else None
     ma5 = sum(closes[-5:]) / 5 if len(closes) >= 5 else None
     trend_up = bool(ma5 and ma20 and ma5 > ma20 and closes[-1] > ma20) if closes else False
 
-    vixc = [x for x in (q_vix.get("close") or []) if isinstance(x, (int, float))]
-    tny = [x for x in (q_tnx.get("close") or []) if isinstance(x, (int, float))]
-    vix_dir = ("down" if len(vixc) >= 2 and vixc[-1] < vixc[-2] else "up") if vixc else "unknown"
-    rates_dir = ("up" if len(tny) >= 2 and tny[-1] > tny[-2] else "down") if tny else "unknown"
+    # VIX and rates context unavailable without fallback sources — report unknown
+    vix_dir = "unknown"
+    rates_dir = "unknown"
 
-    risk_regime = "Risk-on" if trend_up and vix_dir == "down" else ("Risk-off" if (not trend_up and vix_dir == "up") else "Neutral")
+    risk_regime = "Risk-on" if trend_up else "Neutral"
 
     metrics = [
         {"metric": "MA5-MA20", "value": round((ma5 - ma20), 3) if ma5 and ma20 else None, "threshold": ">0", "interpretation": "uptrend" if trend_up else "not-uptrend"},
-        {"metric": "VIX day change", "value": round(vixc[-1] - vixc[-2], 3) if len(vixc) >= 2 else None, "threshold": "<0 risk-on", "interpretation": vix_dir},
-        {"metric": "US10Y day change", "value": round(tny[-1] - tny[-2], 3) if len(tny) >= 2 else None, "threshold": "context", "interpretation": rates_dir},
+        {"metric": "VIX day change", "value": None, "threshold": "<0 risk-on", "interpretation": vix_dir},
+        {"metric": "US10Y day change", "value": None, "threshold": "context", "interpretation": rates_dir},
     ]
 
     rv10 = ann_realized_vol(closes, 10)
@@ -531,19 +577,18 @@ def classify_vol_regime(current_iv, rv10, rv20, term_front_back, skew_put_call):
     }
 
 
-def vol_state(rows, rv10, rv20):
-    ivs = [float(r["iv"]) for r in rows if r.get("iv") is not None]
-    current_iv = sum(ivs[:6]) / len(ivs[:6]) if len(ivs) >= 6 else (sum(ivs) / len(ivs) if ivs else None)
+def vol_state(rows, rv10, rv20, spot=None):
+    current_iv = aggregate_iv_current(rows, spot)
 
-    near = [r for r in rows if 4 <= (r.get("dte") or 999) <= 9 and r.get("iv") is not None]
-    back = [r for r in rows if 20 <= (r.get("dte") or 999) <= 40 and r.get("iv") is not None]
-    near_iv = sum(float(r["iv"]) for r in near) / len(near) if near else None
-    back_iv = sum(float(r["iv"]) for r in back) / len(back) if back else None
+    near = [r for r in rows if 4 <= (r.get("dte") or 999) <= 9 and r.get("iv") is not None and (r.get("dte") or 0) > 0]
+    back = [r for r in rows if 20 <= (r.get("dte") or 999) <= 40 and r.get("iv") is not None and (r.get("dte") or 0) > 0]
+    near_iv = sum(normalize_iv_decimal(r["iv"]) for r in near) / len(near) if near else None
+    back_iv = sum(normalize_iv_decimal(r["iv"]) for r in back) / len(back) if back else None
 
     near_put = [r for r in near if r.get("side") == "P"]
     near_call = [r for r in near if r.get("side") == "C"]
-    put_iv = sum(float(r["iv"]) for r in near_put) / len(near_put) if near_put else None
-    call_iv = sum(float(r["iv"]) for r in near_call) / len(near_call) if near_call else None
+    put_iv = sum(normalize_iv_decimal(r["iv"]) for r in near_put) / len(near_put) if near_put else None
+    call_iv = sum(normalize_iv_decimal(r["iv"]) for r in near_call) / len(near_call) if near_call else None
     skew = (put_iv - call_iv) if put_iv is not None and call_iv is not None else None
     term = (near_iv - back_iv) if (near_iv is not None and back_iv is not None) else None
 
@@ -639,7 +684,7 @@ def build_trade(candidate_type, legs, spot, vol, context):
         return None
 
     dte = min(l.get("dte") or 999 for l in legs)
-    iv = vol.get("ivCurrent")
+    iv = atm_iv_for_expected_move(legs, spot, dte) or vol.get("ivCurrent")
     em = expected_move(spot, iv, dte) if iv else None
     lo, hi = (spot - em, spot + em) if (spot and em) else (None, None)
 
@@ -771,6 +816,8 @@ def build_trade(candidate_type, legs, spot, vol, context):
     return {
         "type": candidate_type,
         "expectedMove": {
+            "ivUsed": round(iv, 4) if iv is not None else None,
+            "dteUsed": dte,
             "value": round(em, 2) if em else None,
             "upper1SD": round(hi, 2) if hi else None,
             "lower1SD": round(lo, 2) if lo else None,
@@ -875,22 +922,51 @@ def attach_mc_decision(candidate, legs, spot):
 
     dte = min((l.get("dte") or 999) for l in legs if l is not None)
     strategy_type = {"debit": "call_debit_spread", "credit": "put_credit_spread", "condor": "iron_condor"}[candidate["type"]]
-    _, rv_path = refresh_dxlink_returns_fallback()
-    mc_result = MCEngine().run(
-        MCEngineConfig(
-            symbol="SPY",
-            spot=float(spot),
-            expiry_days=float(max(dte, 1)),
-            dt_days=MC_DT_DAYS,
-            n_batches=max(1, MC_N_BATCHES),
-            paths_per_batch=max(100, MC_PATHS_PER_BATCH),
-            strategy_type=strategy_type,
-            strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
-            write_artifacts=False,
-            output_root=str(ROOT),
-            allow_local_rv_fallback=True,
+
+    live = load_live(LIVE_PATH) or {}
+    rows = watchlist_from_live(live) if isinstance(live, dict) else []
+    closes = _load_dxlink_candles()
+    returns = []
+    if len(closes) >= 2:
+        for a, b in zip(closes[:-1], closes[1:]):
+            if a and b and a > 0 and b > 0:
+                returns.append(math.log(b / a))
+
+    snapshot_payload = {
+        "spot": float(spot),
+        "strikes": [float(r["strike"]) for r in rows if r.get("strike") is not None and r.get("iv") is not None],
+        "ivs": [float(r["iv"]) for r in rows if r.get("strike") is not None and r.get("iv") is not None],
+        "expiries_days": [float(r.get("dte") or 0) for r in rows if r.get("strike") is not None and r.get("iv") is not None],
+        "returns": returns,
+    }
+
+    snapshot_file = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(snapshot_payload, tmp)
+            snapshot_file = tmp.name
+
+        mc_result = MCEngine().run(
+            MCEngineConfig(
+                symbol="SPY",
+                spot=float(spot),
+                expiry_days=float(max(dte, 1)),
+                dt_days=MC_DT_DAYS,
+                n_batches=max(1, MC_N_BATCHES),
+                paths_per_batch=max(100, MC_PATHS_PER_BATCH),
+                strategy_type=strategy_type,
+                strategy_legs=_strategy_legs_for_candidate(candidate["type"], legs),
+                snapshot_file=snapshot_file,
+                write_artifacts=False,
+                output_root=str(ROOT),
+            )
         )
-    )
+    finally:
+        if snapshot_file:
+            try:
+                Path(snapshot_file).unlink(missing_ok=True)
+            except Exception:
+                pass
 
     candidate["decisionSource"] = "mc_engine"
     candidate["mc"] = {
@@ -918,18 +994,15 @@ def generate_brief_payload():
     _ = load_chain(CHAIN_PATH)  # keep compatibility for environment
 
     brief_id = f"brief_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
+    live_status = load_live_status(LIVE_STATUS_PATH) or {}
     snapshot_id = ((live or {}).get("snapshotId") or (live or {}).get("snapshot_id")) if isinstance(live, dict) else None
 
     spot = None
     spot_source = None
     spot_ts = None
-    live_fresh = bool(live and live_is_fresh(live, max_age_minutes=LIVE_MAX_AGE_MINUTES))
+    live_fresh = bool(live and _live_is_fresh_compat(live, LIVE_MAX_AGE_MINUTES))
 
-    cboe_spot, cboe_src, cboe_ts = get_spot_from_cboe_quote("SPY")
-    if cboe_spot:
-        spot, spot_source, spot_ts = cboe_spot, cboe_src, cboe_ts
-
-    if not spot and live_fresh and live.get("underlying", {}).get("mark"):
+    if live_fresh and live.get("underlying", {}).get("mark"):
         spot = float(live["underlying"]["mark"])
         spot_source = "live_underlying_mark"
         spot_ts = live.get("finishedAt") or live.get("startedAt")
@@ -940,20 +1013,15 @@ def generate_brief_payload():
             spot = dx_spot
             spot_source = "dx_quote_mid"
 
-    if not spot:
-        y_spot, y_src, y_ts = get_spot_from_yahoo()
-        if y_spot:
-            spot, spot_source, spot_ts = y_spot, y_src, y_ts
-
     rows = watchlist_from_live(live) if live_fresh else []
-    # Fallback to free/public Cboe delayed options when live snapshot is partial or empty.
-    if (not rows or not any(r.get("iv") is not None for r in rows)) and spot:
-        crows = watchlist_from_cboe_options(spot, "SPY")
-        if crows:
-            rows = crows
 
     context = regime_snapshot(spot)
-    vol = vol_state(rows, context["realizedVol"].get("rv10"), context["realizedVol"].get("rv20"))
+    try:
+        vol = vol_state(rows, context["realizedVol"].get("rv10"), context["realizedVol"].get("rv20"), spot=spot)
+    except TypeError:
+        vol = vol_state(rows, context["realizedVol"].get("rv10"), context["realizedVol"].get("rv20"))
+    dte_summary = canonical_dte_summary(rows)
+    dte_warnings = sorted({r.get("dteWarning") for r in rows if r.get("dteWarning")})
 
     candidates = build_candidates(rows) if rows else {"debit": (None, None), "credit": (None, None), "condor": (None, None, None, None)}
 
@@ -1070,14 +1138,19 @@ def generate_brief_payload():
             "brief_id": brief_id,
             "snapshot_id": snapshot_id,
             "live_path": LIVE_PATH,
+            "live_candles_path": DXLINK_CANDLE_OUT,
+            "live_status_path": LIVE_STATUS_PATH,
             "live_fresh": live_fresh,
+            "live_status_health": live_status.get("health") if isinstance(live_status, dict) else None,
             "spot_source": spot_source,
             "spot_timestamp": spot_ts,
+            "dteWarnings": dte_warnings,
         },
         "TRADE BRIEF": {
             "Time": context["timeUserTz"],
             "Ticker": "SPY",
             "Spot": spot,
+            "DTE": dte_summary,
             "Regime": context["regime"],
             "Volatility State": vol,
             "Candidates": analyses,
