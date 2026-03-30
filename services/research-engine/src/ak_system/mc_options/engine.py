@@ -405,7 +405,8 @@ class MCEngine:
         mid_batch = []
         real_batch = []
         stress_batch = []
-        last_pnl_real = None
+        pnl_real_all = []
+        pot_real_all = []
 
         for b in range(n_batches):
             seed_b = base_seed + b * 1009
@@ -415,9 +416,12 @@ class MCEngine:
             mid_batch.append(compute_metrics_fn(pnl_mid, pot_mid))
             real_batch.append(compute_metrics_fn(pnl_real, pot_real))
             stress_batch.append(compute_metrics_fn(pnl_stress, pot_stress))
-            last_pnl_real = pnl_real
+            pnl_real_all.append(np.asarray(pnl_real, dtype=float))
+            pot_real_all.append(np.asarray(pot_real, dtype=float))
 
-        metrics = real_batch[-1]
+        pnl_real_full = np.concatenate(pnl_real_all) if pnl_real_all else np.array([], dtype=float)
+        pot_real_full = np.concatenate(pot_real_all) if pot_real_all else np.array([], dtype=float)
+        metrics = compute_metrics_fn(pnl_real_full, pot_real_full) if pnl_real_full.size else real_batch[-1]
         ev_real_vals = np.array([m.ev for m in real_batch])
         pop_real_vals = np.array([m.pop for m in real_batch])
         cvar_real_vals = np.array([m.cvar95 for m in real_batch])
@@ -429,9 +433,9 @@ class MCEngine:
         z = 1.96
         n_batches_float = float(len(ev_real_vals)) if len(ev_real_vals) else 1.0
         ev_mean = float(np.mean(ev_real_vals))
-        ev_std = float(np.std(ev_real_vals))
-        ev_se = ev_std / np.sqrt(n_batches_float)
-        pop_mean = float(np.mean(pop_real_vals))
+        ev_std = float(np.std(pnl_real_full)) if pnl_real_full.size else float(np.std(ev_real_vals))
+        ev_se = (ev_std / np.sqrt(float(pnl_real_full.size))) if pnl_real_full.size else (ev_std / np.sqrt(n_batches_float))
+        pop_mean = float(metrics.pop)
         pop_se = float(np.sqrt(max(pop_mean * (1.0 - pop_mean), 0.0) / n_total_paths)) if n_total_paths > 0 else 0.0
 
         multi_seed_confidence = {
@@ -521,6 +525,7 @@ class MCEngine:
                 "legs": [asdict(leg) for leg in strategy.legs],
                 "snapshot_file": config.snapshot_file,
                 "event_risk_high": config.event_risk_high,
+                "iv_atm": ivp.iv_atm,
             },
             "randomness_policy": {"comparison_mode": "paired", "base_seed": base_seed, "sensitivity_seed": base_seed, "crn_scope": "same_model_same_structure_friction_only", "cross_model_or_cross_structure": "unpaired_independent_seeds_required"},
             "calibration": {
